@@ -72,10 +72,10 @@ class HSK4ExamApp {
         this.isManualGradingActive = false;
 
         // Zoom properties
-        this.pdfScale = 1.5; // Current zoom scale (1.0 = 100%)
-        this.minScale = 0.5; // Minimum zoom (30%)
-        this.maxScale = 3.0; // Maximum zoom (300%)
-        this.scaleStep = 0.1; // Zoom step size
+        this.pdfScale = 1.0; // Current zoom scale (1.0 = 100%)
+        this.minScale = 0.3; // Minimum zoom (30%)
+        this.maxScale = 5.0; // Increased maximum zoom (500%)
+        this.scaleStep = 0.2; // Increased zoom step size
 
         this.init();
         this.showHistoryModalOnStart();
@@ -123,16 +123,18 @@ class HSK4ExamApp {
 
         // Handle mouse wheel zoom on PDF container
         const pdfContainer = document.querySelector('.pdf-container');
-        pdfContainer.addEventListener('wheel', (e) => {
-            if (e.ctrlKey) {
-                e.preventDefault();
-                if (e.deltaY < 0) {
-                    this.zoomIn();
-                } else {
-                    this.zoomOut();
+        if (pdfContainer) {
+            pdfContainer.addEventListener('wheel', (e) => {
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    if (e.deltaY < 0) {
+                        this.zoomIn();
+                    } else {
+                        this.zoomOut();
+                    }
                 }
-            }
-        }, { passive: false });
+            }, { passive: false });
+        }
     }
 
     showHistoryModalOnStart() {
@@ -177,7 +179,9 @@ class HSK4ExamApp {
             this.checkReadyToStart();
 
             document.getElementById('totalPages').textContent = this.totalPages;
-            await this.renderPage(1);
+            
+            // Initial render with fit to page
+            await this.fitToPage();
         } catch (error) {
             alert('Error loading PDF: ' + error.message);
         }
@@ -241,15 +245,16 @@ class HSK4ExamApp {
         // Create canvas
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
+        
+        // Set canvas dimensions to match viewport
         canvas.width = viewport.width;
         canvas.height = viewport.height;
 
-        // Set canvas style
-        canvas.style.maxWidth = 'none';
-        canvas.style.maxHeight = 'none';
-        canvas.style.width = `${viewport.width}px`;
-        canvas.style.height = `${viewport.height}px`;
-        canvas.style.objectFit = 'contain';
+        // Set canvas style - NO constraints, let it be natural size
+        canvas.style.width = viewport.width + 'px';
+        canvas.style.height = viewport.height + 'px';
+        canvas.style.display = 'block';
+        canvas.style.margin = '0';
         canvas.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
 
         // Render PDF
@@ -290,44 +295,42 @@ class HSK4ExamApp {
         this.renderPage(this.currentPage);
     }
 
-    fitToWidth() {
+    async fitToWidth() {
         if (!this.pdfDoc || !this.currentPage) return;
         
-        const container = document.getElementById('pdfViewer').parentElement;
+        const page = await this.pdfDoc.getPage(this.currentPage);
+        const container = document.querySelector('.pdf-container');
         const containerWidth = container.clientWidth - 40; // Account for padding
         
         // Get page width at scale 1.0
-        this.pdfDoc.getPage(this.currentPage).then(page => {
-            const viewport = page.getViewport({ scale: 1.0 });
-            const pageWidth = viewport.width;
-            
-            // Calculate scale to fit width
-            this.pdfScale = containerWidth / pageWidth;
-            this.updateZoomDisplay();
-            this.renderPage(this.currentPage);
-        });
+        const viewport = page.getViewport({ scale: 1.0 });
+        const pageWidth = viewport.width;
+        
+        // Calculate scale to fit width
+        this.pdfScale = containerWidth / pageWidth;
+        this.updateZoomDisplay();
+        this.renderPage(this.currentPage);
     }
 
-    fitToPage() {
+    async fitToPage() {
         if (!this.pdfDoc || !this.currentPage) return;
         
-        const container = document.getElementById('pdfViewer').parentElement;
+        const page = await this.pdfDoc.getPage(this.currentPage);
+        const container = document.querySelector('.pdf-container');
         const containerWidth = container.clientWidth - 40;
         const containerHeight = container.clientHeight - 40;
         
-        this.pdfDoc.getPage(this.currentPage).then(page => {
-            const viewport = page.getViewport({ scale: 1.0 });
-            const pageWidth = viewport.width;
-            const pageHeight = viewport.height;
-            
-            // Calculate scale to fit within container
-            const scaleWidth = containerWidth / pageWidth;
-            const scaleHeight = containerHeight / pageHeight;
-            this.pdfScale = Math.min(scaleWidth, scaleHeight);
-            
-            this.updateZoomDisplay();
-            this.renderPage(this.currentPage);
-        });
+        const viewport = page.getViewport({ scale: 1.0 });
+        const pageWidth = viewport.width;
+        const pageHeight = viewport.height;
+        
+        // Calculate scale to fit within container
+        const scaleWidth = containerWidth / pageWidth;
+        const scaleHeight = containerHeight / pageHeight;
+        this.pdfScale = Math.min(scaleWidth, scaleHeight);
+        
+        this.updateZoomDisplay();
+        this.renderPage(this.currentPage);
     }
 
     updateZoomDisplay() {
@@ -335,7 +338,7 @@ class HSK4ExamApp {
         document.getElementById('zoomLevel').textContent = zoomPercent;
         
         // Add or remove zoomed class based on scale
-        const container = document.getElementById('pdfViewer').parentElement;
+        const container = document.querySelector('.pdf-container');
         if (this.pdfScale > 1.0) {
             container.classList.add('zoomed');
         } else {
@@ -480,7 +483,8 @@ class HSK4ExamApp {
         document.getElementById('historyModal').classList.add('hidden');
 
         if (this.pdfDoc) {
-            await this.renderPage(1);
+            // Start with fit to page
+            await this.fitToPage();
             document.getElementById('pdfNav').style.display = 'block';
             // Show zoom controls
             document.getElementById('pdfControls').style.display = 'flex';
