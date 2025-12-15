@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HSK 4 Exam Simulator</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+    <!-- History Modal -->
+    <div id="historyModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>📚 Exam History</h2>
+            <div class="info-box">Your past test results and improvements over time</div>
+            <div id="historyList" style="max-height: 400px; overflow-y: auto; margin: 20px 0;"></div>
+            <div style="text-align: center; display: flex; gap: 15px; justify-content: center;">
+                <button class="btn btn-secondary" onclick="app.closeHistory()">Close</button>
+                <button class="btn btn-danger" onclick="app.clearHistory()">🗑 Clear History</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Setup Screen -->
+    <div class="setup-screen" id="setupScreen">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+            <h2>🎯 HSK 4 Exam Simulator</h2>
+            <button class="btn btn-secondary" onclick="app.showHistory()" style="padding: 10px 20px;">
+                📚 View History
+            </button>
+        </div>
+        <p>Upload your exam materials to begin your practice test</p>
+
+        <div class="upload-card" id="examCard" onclick="document.getElementById('examPdfInput').click()">
+            <h3><span class="upload-icon">📄</span> Exam PDF</h3>
+            <p style="color: #6e6e73; margin: 5px 0;">Click to upload your HSK 4 exam paper</p>
+            <input type="file" id="examPdfInput" accept=".pdf" style="display: none;">
+            <div id="examStatus"></div>
+        </div>
+
+        <div class="upload-card" id="audioCard" onclick="document.getElementById('audioInput').click()">
+            <h3><span class="upload-icon">🎧</span> Listening Audio (Optional)</h3>
+            <p style="color: #6e6e73; margin: 5px 0;">Upload audio file for listening section</p>
+            <input type="file" id="audioInput" accept="audio/*" style="display: none;">
+            <div id="audioStatus"></div>
+        </div>
+
+        <div class="upload-card" id="answerCard" onclick="document.getElementById('answerPdfInput').click()">
+            <h3><span class="upload-icon">🔑</span> Answer Key (Optional)</h3>
+            <p style="color: #6e6e73; margin: 5px 0;">Upload answer key PDF for automatic grading</p>
+            <input type="file" id="answerPdfInput" accept=".pdf" style="display: none;">
+            <div id="answerStatus"></div>
+        </div>
+
+        <button class="start-exam-btn" id="beginExamBtn" onclick="app.beginExam()" disabled>
+            Start Exam
+        </button>
+    </div>
+
+    <!-- Exam Mode -->
+    <div class="exam-mode" id="examMode">
+        <div class="header">
+            <h1>HSK 4 Exam</h1>
+            <div class="timer" id="timer">00:00</div>
+        </div>
+
+        <div class="exam-controls">
+            <span class="section-indicator" id="currentSection">Ready to Start</span>
+            <div class="control-buttons">
+                <button class="btn btn-primary" id="startBtn" onclick="app.startSection()">▶ Start Section</button>
+                <button class="btn btn-secondary" id="pauseBtn" onclick="app.pauseTimer()" disabled>⏸ Pause</button>
+                <button class="btn btn-danger" onclick="app.submitExam()">✓ Submit Exam</button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="pdf-section">
+                <div class="pdf-header">
+                    <h3>Exam Paper</h3>
+                </div>
+                <!-- Add the PDF Controls (Zoom) here -->
+                <div class="pdf-controls" id="pdfControls">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <button class="btn btn-secondary" onclick="app.zoomOut()" title="Zoom Out">-</button>
+                        <span style="font-size: 0.9rem;">Zoom: <span id="zoomLevel">100</span>%</span>
+                        <button class="btn btn-secondary" onclick="app.zoomIn()" title="Zoom In">+</button>
+                        <button class="btn btn-secondary" onclick="app.resetZoom()" title="Reset Zoom">⟲ Reset</button>
+                        <div style="margin-left: 15px; display: flex; align-items: center; gap: 5px;">
+                            <button class="btn btn-secondary" onclick="app.fitToWidth()" title="Fit to Width">↔ Fit Width</button>
+                            <button class="btn btn-secondary" onclick="app.fitToPage()" title="Fit to Page">⤢ Fit Page</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="pdf-container" id="pdfViewer"></div>
+                <div class="pdf-nav" id="pdfNav">
+                    <button class="btn btn-secondary" onclick="app.changePage(-1)">◀ Previous</button>
+                    <span style="margin: 0 15px; font-weight: 600;">Page <span id="currentPage">1</span> of <span id="totalPages">1</span></span>
+                    <button class="btn btn-secondary" onclick="app.changePage(1)">Next ▶</button>
+                </div>
+            </div>
+
+            <div class="answer-section">
+                <div class="answer-header">
+                    <h3>Answer Sheet</h3>
+                </div>
+
+                <div class="audio-controls hidden" id="audioControls">
+                    <strong>🎧 Listening Audio</strong>
+                    <audio id="audioPlayer" controls>
+                        Your browser does not support audio.
+                    </audio>
+                </div>
+
+                <div class="answer-container" id="answerContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Modal -->
+    <div id="resultsModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>📊 Exam Results</h2>
+
+            <!-- Manual Grading Section -->
+            <div id="manualGradingContainer" class="manual-grading-container hidden">
+                <div class="manual-grading-header">
+                    <h3>✏️ Manual Grading</h3>
+                    <div class="grading-controls">
+                        <button class="btn btn-success" onclick="app.markAllCurrentCorrect()">✓ Mark All Correct</button>
+                        <button class="btn btn-danger" onclick="app.markAllCurrentIncorrect()">✗ Mark All Incorrect</button>
+                        <button class="btn btn-primary" onclick="app.calculateScoresFromGrading()">📊 Calculate Scores</button>
+                    </div>
+                </div>
+
+                <div class="manual-grading-layout">
+                    <!-- Answer Key PDF Viewer -->
+                    <div class="manual-grading-pdf">
+                        <div style="padding: 15px; border-bottom: 1px solid #e5e5e7; background: white;">
+                            <h4 style="margin: 0; font-size: 1.1rem;">🔑 Answer Key</h4>
+                        </div>
+                        <div class="pdf-viewer-container" id="answerKeyPdfViewer">
+                            <!-- Answer key PDF will be rendered here -->
+                        </div>
+                        <div style="padding: 10px; border-top: 1px solid #e5e5e7; background: white; text-align: center;">
+                            <button class="btn btn-secondary" onclick="app.changeAnswerKeyPage(-1)">◀</button>
+                            <span style="margin: 0 10px; font-size: 0.9rem;">Page <span id="answerKeyCurrentPage">1</span></span>
+                            <button class="btn btn-secondary" onclick="app.changeAnswerKeyPage(1)">▶</button>
+                        </div>
+                    </div>
+
+                    <!-- Manual Grading Answers -->
+                    <div class="manual-grading-answers">
+                        <div style="padding: 15px; border-bottom: 1px solid #e5e5e7; background: white;">
+                            <div class="grading-section-tabs">
+                                <button class="grading-tab active" onclick="app.switchGradingSection('listening')">👂 Listening</button>
+                                <button class="grading-tab" onclick="app.switchGradingSection('reading')">📖 Reading</button>
+                                <button class="grading-tab" onclick="app.switchGradingSection('writing')">✏️ Writing</button>
+                            </div>
+                        </div>
+                        <div class="answers-container" id="manualGradingAnswers">
+                            <!-- Grading interface will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Manual Score Entry Section -->
+            <div id="manualScoreEntryContainer" class="hidden">
+                <div class="manual-score-entry">
+                    <h3 style="font-size: 1.2rem; margin-bottom: 15px;">📝 Enter Raw Scores (HSK 4 conversion will be calculated)</h3>
+
+                    <div class="score-input-grid">
+                        <div class="score-input-group">
+                            <label>👂 Listening Correct</label>
+                            <input type="number" id="rawListeningCorrect" min="0" max="45" placeholder="0-45">
+                            <div class="raw-score-info">Out of 45 questions</div>
+                        </div>
+                        <div class="score-input-group">
+                            <label>📖 Reading Correct</label>
+                            <input type="number" id="rawReadingCorrect" min="0" max="40" placeholder="0-40">
+                            <div class="raw-score-info">Out of 40 questions</div>
+                        </div>
+                        <div class="score-input-group">
+                            <label>✏️ Writing Correct</label>
+                            <input type="number" id="rawWritingCorrect" min="0" max="15" placeholder="0-15">
+                            <div class="raw-score-info">Out of 15 questions</div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="app.calculateAndDisplayScores()" style="width: 100%;">
+                        ✅ Calculate HSK 4 Scores
+                    </button>
+                </div>
+            </div>
+
+            <!-- Results Display -->
+            <div id="resultsContent"></div>
+
+            <!-- Action Buttons -->
+            <div style="text-align: center; margin-top: 30px; display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                <button class="btn btn-primary" onclick="app.closeResults()">Close</button>
+                <button class="btn btn-secondary" onclick="app.saveToHistory()">💾 Save to History</button>
+                <button class="btn btn-secondary" onclick="app.exportResults()">📤 Export Results</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

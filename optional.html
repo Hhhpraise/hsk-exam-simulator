@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HSK 4 Exam Simulator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif; }
+        body { background: #f5f5f7; min-height: 100vh; padding: 0; transition: background 0.3s; }
+
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            background: white;
+            min-height: 100vh;
+            box-shadow: 0 0 40px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+
+        /* Header Styles */
+        .header {
+            background: linear-gradient(135deg, #000000, #1d1d1f);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.15);
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }
+
+        .timer {
+            font-size: 2rem;
+            font-weight: 300;
+            color: #ff3b30;
+            background: rgba(255,255,255,0.95);
+            padding: 10px 25px;
+            border-radius: 12px;
+            min-width: 140px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Setup Screen */
+        .setup-screen {
+            max-width: 800px;
+            margin: 60px auto;
+            padding: 40px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+        }
+
+        .setup-screen h2 {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            color: #1d1d1f;
+            font-weight: 600;
+        }
+
+        .setup-screen p {
+            color: #6e6e73;
+            font-size: 1.1rem;
+            margin-bottom: 40px;
+        }
+
+        .upload-card {
+            background: #f5f5f7;
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 25px;
+            border: 2px dashed #d2d2d7;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .upload-card:hover {
+            border-color: #0071e3;
+            background: #f0f7ff;
+            transform: translateY(-2px);
+        }
+
+        .upload-card.uploaded {
+            border-color: #34c759;
+            background: #f0fdf4;
+            border-style: solid;
+        }
+
+        .upload-card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 10px;
+            color: #1d1d1f;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .upload-icon {
+            font-size: 2rem;
+        }
+
+        .upload-status {
+            color: #34c759;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+
+        .start-exam-btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #0071e3, #005bb5);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 30px;
+        }
+
+        .start-exam-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0,113,227,0.3);
+        }
+
+        .start-exam-btn:disabled {
+            background: #d2d2d7;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        /* Exam Mode - Focus Layout */
+        .exam-mode {
+            display: none;
+        }
+
+        .exam-mode.active {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .exam-controls {
+            background: #fafafa;
+            padding: 15px 30px;
+            border-bottom: 1px solid #e5e5e7;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .section-indicator {
+            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            padding: 10px 20px;
+            border-radius: 12px;
+            font-weight: 600;
+            color: #0071e3;
+            font-size: 1rem;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .pdf-section {
+            flex: 1.2;
+            padding: 20px;
+            border-right: 1px solid #e5e5e7;
+            display: flex;
+            flex-direction: column;
+            background: #fafafa;
+        }
+
+        .pdf-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .pdf-header h3 {
+            font-size: 1.3rem;
+            color: #1d1d1f;
+            font-weight: 600;
+        }
+
+        .pdf-container {
+            flex: 1;
+            border-radius: 12px;
+            overflow: auto;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+        }
+
+        .pdf-container canvas {
+            max-width: 100%;
+            height: auto;
+        }
+
+        .pdf-nav {
+            padding: 15px;
+            text-align: center;
+            background: white;
+            border-radius: 12px;
+            margin-top: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .answer-section {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+
+        .answer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .answer-header h3 {
+            font-size: 1.3rem;
+            color: #1d1d1f;
+            font-weight: 600;
+        }
+
+        .answer-container {
+            flex: 1;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+
+        .answer-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .answer-container::-webkit-scrollbar-track {
+            background: #f5f5f7;
+            border-radius: 4px;
+        }
+
+        .answer-container::-webkit-scrollbar-thumb {
+            background: #d2d2d7;
+            border-radius: 4px;
+        }
+
+        .answer-container::-webkit-scrollbar-thumb:hover {
+            background: #b0b0b5;
+        }
+
+        .question-group {
+            background: #fafafa;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            border: 1px solid #e5e5e7;
+        }
+
+        .question-group h4 {
+            color: #1d1d1f;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e5e5e7;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .question-item {
+            margin: 15px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e5e5e7;
+            transition: all 0.2s;
+        }
+
+        .question-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .question-label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #1d1d1f;
+            font-size: 0.95rem;
+        }
+
+        .option-row {
+            display: flex;
+            gap: 15px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        .option-row label {
+            cursor: pointer;
+            padding: 8px 14px;
+            border-radius: 8px;
+            transition: all 0.2s;
+            background: #f5f5f7;
+            border: 1px solid #e5e5e7;
+            font-size: 0.9rem;
+        }
+
+        .option-row label:hover {
+            background: #e3f2fd;
+            border-color: #0071e3;
+        }
+
+        input[type="radio"]:checked + label,
+        .option-row label:has(input:checked) {
+            background: #0071e3;
+            color: white;
+            border-color: #0071e3;
+        }
+
+        input[type="radio"], input[type="checkbox"] {
+            margin-right: 6px;
+            cursor: pointer;
+        }
+
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #d2d2d7;
+            border-radius: 8px;
+            margin-top: 8px;
+            font-family: inherit;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+        }
+
+        input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: #0071e3;
+            box-shadow: 0 0 0 3px rgba(0,113,227,0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 70px;
+            line-height: 1.5;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            font-size: 0.95rem;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #0071e3, #005bb5);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,113,227,0.3);
+        }
+
+        .btn-secondary {
+            background: #f5f5f7;
+            color: #1d1d1f;
+            border: 1px solid #d2d2d7;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #e5e5e7;
+        }
+
+        .btn-danger {
+            background: #ff3b30;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #d32f2f;
+            transform: translateY(-1px);
+        }
+
+        .hidden { display: none !important; }
+
+        .audio-controls {
+            background: #fff9e6;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 1px solid #ffe082;
+        }
+
+        .audio-controls strong {
+            display: block;
+            margin-bottom: 10px;
+            color: #1d1d1f;
+        }
+
+        audio {
+            width: 100%;
+            margin-top: 8px;
+            height: 45px;
+            border-radius: 8px;
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            max-width: 900px;
+            max-height: 85vh;
+            overflow-y: auto;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .modal-content h2 {
+            color: #1d1d1f;
+            margin-bottom: 25px;
+            font-size: 2rem;
+            font-weight: 600;
+        }
+
+        .info-box {
+            background: #f0fdf4;
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+            border-left: 4px solid #34c759;
+            color: #1d1d1f;
+        }
+
+        .warning-box {
+            background: #fff9e6;
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+            border-left: 4px solid #ff9800;
+            color: #1d1d1f;
+        }
+
+        .timer.warning {
+            color: #ff3b30;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.98); }
+        }
+
+        .score-display {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 30px;
+            background: linear-gradient(135deg, #f0f7ff, #e3f2fd);
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,113,227,0.1);
+        }
+
+        .score-display h3 {
+            color: #0071e3;
+            font-size: 3rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .score-display p {
+            font-size: 1.3rem;
+            color: #6e6e73;
+        }
+
+        @media (max-width: 1200px) {
+            .main-content {
+                flex-direction: column;
+            }
+            .pdf-section, .answer-section {
+                flex: none;
+                width: 100%;
+                min-height: 50vh;
+            }
+            .pdf-section {
+                border-right: none;
+                border-bottom: 1px solid #e5e5e7;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header h1 { font-size: 1.3rem; }
+            .timer { font-size: 1.5rem; padding: 8px 18px; }
+            .setup-screen { padding: 30px 20px; margin: 40px 20px; }
+            .setup-screen h2 { font-size: 2rem; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Setup Screen -->
+    <div class="setup-screen" id="setupScreen">
+        <h2>🎯 HSK 4 Exam Simulator</h2>
+        <p>Upload your exam materials to begin your practice test</p>
+
+        <div class="upload-card" id="examCard" onclick="document.getElementById('examPdfInput').click()">
+            <h3><span class="upload-icon">📄</span> Exam PDF</h3>
+            <p style="color: #6e6e73; margin: 5px 0;">Click to upload your HSK 4 exam paper</p>
+            <input type="file" id="examPdfInput" accept=".pdf" style="display: none;">
+            <div id="examStatus"></div>
+        </div>
+
+        <div class="upload-card" id="audioCard" onclick="document.getElementById('audioInput').click()">
+            <h3><span class="upload-icon">🎧</span> Listening Audio (Optional)</h3>
+            <p style="color: #6e6e73; margin: 5px 0;">Upload audio file for listening section</p>
+            <input type="file" id="audioInput" accept="audio/*" style="display: none;">
+            <div id="audioStatus"></div>
+        </div>
+
+        <div class="upload-card" id="answerCard" onclick="document.getElementById('answerPdfInput').click()">
+            <h3><span class="upload-icon">🔑</span> Answer Key (Optional)</h3>
+            <p style="color: #6e6e73; margin: 5px 0;">Upload answer key PDF for automatic grading</p>
+            <input type="file" id="answerPdfInput" accept=".pdf" style="display: none;">
+            <div id="answerStatus"></div>
+        </div>
+
+        <button class="start-exam-btn" id="beginExamBtn" onclick="app.beginExam()" disabled>
+            Start Exam
+        </button>
+    </div>
+
+    <!-- Exam Mode -->
+    <div class="exam-mode" id="examMode">
+        <div class="header">
+            <h1>HSK 4 Exam</h1>
+            <div class="timer" id="timer">00:00</div>
+        </div>
+
+        <div class="exam-controls">
+            <span class="section-indicator" id="currentSection">Ready to Start</span>
+            <div class="control-buttons">
+                <button class="btn btn-primary" id="startBtn" onclick="app.startSection()">▶ Start Section</button>
+                <button class="btn btn-secondary" id="pauseBtn" onclick="app.pauseTimer()" disabled>⏸ Pause</button>
+                <button class="btn btn-danger" onclick="app.submitExam()">✓ Submit Exam</button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="pdf-section">
+                <div class="pdf-header">
+                    <h3>Exam Paper</h3>
+                </div>
+                <div class="pdf-container" id="pdfViewer"></div>
+                <div class="pdf-nav" id="pdfNav">
+                    <button class="btn btn-secondary" onclick="app.changePage(-1)">◀ Previous</button>
+                    <span style="margin: 0 15px; font-weight: 600;">Page <span id="currentPage">1</span> of <span id="totalPages">1</span></span>
+                    <button class="btn btn-secondary" onclick="app.changePage(1)">Next ▶</button>
+                </div>
+            </div>
+
+            <div class="answer-section">
+                <div class="answer-header">
+                    <h3>Answer Sheet</h3>
+                </div>
+
+                <div class="audio-controls hidden" id="audioControls">
+                    <strong>🎧 Listening Audio</strong>
+                    <audio id="audioPlayer" controls>
+                        Your browser does not support audio.
+                    </audio>
+                </div>
+
+                <div class="answer-container" id="answerContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Modal -->
+    <div id="resultsModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>📊 Exam Results</h2>
+            <div id="resultsContent"></div>
+            <div style="text-align: center; margin-top: 30px; display: flex; gap: 15px; justify-content: center;">
+                <button class="btn btn-primary" onclick="app.closeResults()">Close</button>
+                <button class="btn btn-secondary" onclick="app.exportResults()">💾 Export Results</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        class HSK4ExamApp {
+            constructor() {
+                this.pdfDoc = null;
+                this.currentPage = 1;
+                this.totalPages = 0;
+                this.answerKeyPdf = null;
+                this.filesUploaded = {
+                    exam: false,
+                    audio: false,
+                    answer: false
+                };
+
+                this.examState = {
+                    currentSection: 'listening',
+                    currentPart: 1,
+                    isRunning: false,
+                    isPaused: false,
+                    timeRemaining: 0,
+                    totalTime: 0
+                };
+
+                this.examTiming = {
+                    listening: { part1: 10 * 60, part2: 10 * 60, part3: 10 * 60 },
+                    reading: { part1: 13 * 60, part2: 13 * 60, part3: 14 * 60 },
+                    writing: { part1: 15 * 60, part2: 10 * 60 }
+                };
+
+                this.userAnswers = {
+                    listening: {
+                        part1: new Array(10).fill(null),
+                        part2: new Array(15).fill(null),
+                        part3: new Array(20).fill(null)
+                    },
+                    reading: {
+                        part1: new Array(10).fill(''),
+                        part2: new Array(10).fill(''),
+                        part3: new Array(20).fill(null)
+                    },
+                    writing: {
+                        part1: new Array(10).fill(''),
+                        part2: new Array(5).fill('')
+                    }
+                };
+
+                this.answerKey = null;
+                this.timerInterval = null;
+
+                this.init();
+            }
+
+            init() {
+                document.getElementById('examPdfInput').addEventListener('change', (e) => {
+                    if (e.target.files[0]) this.loadExamPDF(e.target.files[0]);
+                });
+
+                document.getElementById('audioInput').addEventListener('change', (e) => {
+                    if (e.target.files[0]) this.loadAudio(e.target.files[0]);
+                });
+
+                document.getElementById('answerPdfInput').addEventListener('change', (e) => {
+                    if (e.target.files[0]) this.loadAnswerKeyPdf(e.target.files[0]);
+                });
+
+                this.updateSectionIndicator();
+            }
+
+            async loadExamPDF(file) {
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    this.pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    this.totalPages = this.pdfDoc.numPages;
+                    this.currentPage = 1;
+
+                    this.filesUploaded.exam = true;
+                    document.getElementById('examStatus').innerHTML = '<div class="upload-status">✅ Loaded successfully</div>';
+                    document.getElementById('examCard').classList.add('uploaded');
+                    this.checkReadyToStart();
+
+                    document.getElementById('totalPages').textContent = this.totalPages;
+                } catch (error) {
+                    alert('Error loading PDF: ' + error.message);
+                }
+            }
+
+            loadAudio(file) {
+                const url = URL.createObjectURL(file);
+                document.getElementById('audioPlayer').src = url;
+                this.filesUploaded.audio = true;
+                document.getElementById('audioStatus').innerHTML = '<div class="upload-status">✅ Loaded successfully</div>';
+                document.getElementById('audioCard').classList.add('uploaded');
+            }
+
+            async loadAnswerKeyPdf(file) {
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    this.answerKeyPdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+                    let fullText = '';
+                    for (let i = 1; i <= this.answerKeyPdf.numPages; i++) {
+                        const page = await this.answerKeyPdf.getPage(i);
+                        const textContent = await page.getTextContent();
+                        const pageText = textContent.items.map(item => item.str).join(' ');
+                        fullText += pageText + '\n';
+                    }
+
+                    this.answerKey = this.parseAnswerKeyText(fullText);
+
+                    if (this.answerKey) {
+                        document.getElementById('answerStatus').innerHTML = '<div class="upload-status">✅ Parsed successfully - Auto-grading enabled</div>';
+                        document.getElementById('answerCard').classList.add('uploaded');
+                        this.filesUploaded.answer = true;
+                    } else {
+                        document.getElementById('answerStatus').innerHTML = '<div class="upload-status" style="color: #ff9800;">⚠️ Loaded but could not auto-parse</div>';
+                    }
+                } catch (error) {
+                    alert('Error loading answer key PDF: ' + error.message);
+                }
+            }
+
+            parseAnswerKeyText(text) {
+    try {
+        const answerKey = {
+            listening: { part1: [], part2: [], part3: [] },
+            reading: { part1: [], part2: [], part3: [] },
+            writing: { part1: [], part2: [] }
+        };
+
+        // Normalize text - remove extra spaces but keep structure
+        text = text.replace(/\s+/g, ' ').trim();
+
+        // First, let's split by sections to make parsing easier
+        const sections = {
+            listeningPart1: text.match(/一、听力[\s\S]*?第一部分[\s\S]*?(?=第二部分|二、阅读|$)/),
+            listeningPart2: text.match(/第二部分[\s\S]*?(?=第三部分|二、阅读|$)/),
+            listeningPart3: text.match(/第三部分[\s\S]*?(?=二、阅读|$)/),
+            readingPart1: text.match(/二、阅读[\s\S]*?第一部分[\s\S]*?(?=第二部分|三、书写|$)/),
+            readingPart2: text.match(/第二部分[\s\S]*?(?=第三部分|三、书写|$)/),
+            readingPart3: text.match(/第三部分[\s\S]*?(?=三、书写|$)/),
+            writingPart1: text.match(/三、书写[\s\S]*?第一部分[\s\S]*?(?=第二部分|$)/),
+            writingPart2: text.match(/第二部分[\s\S]*?(?=$)/)
+        };
+
+        // Parse Listening Part 1 (1-10) - True/False (√/×)
+        if (sections.listeningPart1) {
+            const part1Text = sections.listeningPart1[0];
+            const tfPattern = /(\d+)\.\s*([√×])/g;
+            let match;
+            const answers = new Array(10).fill(null);
+
+            while ((match = tfPattern.exec(part1Text)) !== null) {
+                const num = parseInt(match[1]);
+                if (num >= 1 && num <= 10) {
+                    answers[num - 1] = match[2] === '√' ? 'true' : 'false';
+                }
+            }
+            answerKey.listening.part1 = answers.filter(a => a !== null);
+        }
+
+        // Parse Listening Part 2 (11-25) - A/B/C/D
+        if (sections.listeningPart2) {
+            const part2Text = sections.listeningPart2[0];
+            const abcPattern = /(\d+)\.\s*([A-D])/g;
+            let match;
+            const answers = new Array(15).fill(null);
+
+            while ((match = abcPattern.exec(part2Text)) !== null) {
+                const num = parseInt(match[1]);
+                if (num >= 11 && num <= 25) {
+                    answers[num - 11] = match[2];
+                }
+            }
+            answerKey.listening.part2 = answers.filter(a => a !== null);
+        }
+
+        // Parse Listening Part 3 (26-45) - A/B/C/D
+        if (sections.listeningPart3) {
+            const part3Text = sections.listeningPart3[0];
+            const abcPattern = /(\d+)\.\s*([A-D])/g;
+            let match;
+            const answers = new Array(20).fill(null);
+
+            while ((match = abcPattern.exec(part3Text)) !== null) {
+                const num = parseInt(match[1]);
+                if (num >= 26 && num <= 45) {
+                    answers[num - 26] = match[2];
+                }
+            }
+            answerKey.listening.part3 = answers.filter(a => a !== null);
+        }
+
+        // Parse Reading Part 1 (46-55) - A-F
+        if (sections.readingPart1) {
+            const part1Text = sections.readingPart1[0];
+            const afPattern = /(\d+)\.\s*([A-F])/g;
+            let match;
+            const answers = new Array(10).fill(null);
+
+            while ((match = afPattern.exec(part1Text)) !== null) {
+                const num = parseInt(match[1]);
+                if (num >= 46 && num <= 55) {
+                    answers[num - 46] = match[2];
+                }
+            }
+            answerKey.reading.part1 = answers.filter(a => a !== null);
+        }
+
+        // Parse Reading Part 2 (56-65) - ABC combinations
+        if (sections.readingPart2) {
+            const part2Text = sections.readingPart2[0];
+            const abcPattern = /(\d+)\.\s*([A-C]{3})/g;
+            let match;
+            const answers = new Array(10).fill(null);
+
+            while ((match = abcPattern.exec(part2Text)) !== null) {
+                const num = parseInt(match[1]);
+                if (num >= 56 && num <= 65) {
+                    answers[num - 56] = match[2];
+                }
+            }
+            answerKey.reading.part2 = answers.filter(a => a !== null);
+        }
+
+        // Parse Reading Part 3 (66-85) - A/B/C/D
+        if (sections.readingPart3) {
+            const part3Text = sections.readingPart3[0];
+            const abcdPattern = /(\d+)\.\s*([A-D])/g;
+            let match;
+            const answers = new Array(20).fill(null);
+
+            while ((match = abcdPattern.exec(part3Text)) !== null) {
+                const num = parseInt(match[1]);
+                if (num >= 66 && num <= 85) {
+                    answers[num - 66] = match[2];
+                }
+            }
+            answerKey.reading.part3 = answers.filter(a => a !== null);
+        }
+
+        // Parse Writing Part 1 (86-95) - Example sentences
+        if (sections.writingPart1) {
+            const part1Text = sections.writingPart1[0];
+            const sentencePattern = /(\d+)\.\s*([^\.]+(?:\.[^\.]+)*)/g;
+            let match;
+            const answers = new Array(10).fill('');
+
+            while ((match = sentencePattern.exec(part1Text)) !== null) {
+                const num = parseInt(match[1]);
+                if (num >= 86 && num <= 95) {
+                    const sentence = match[2].trim();
+                    // Clean up the sentence (remove extra spaces, normalize punctuation)
+                    answers[num - 86] = sentence.replace(/\s+/g, ' ').replace(/\.$/, '');
+                }
+            }
+            answerKey.writing.part1 = answers;
+        }
+
+        // Parse Writing Part 2 (96-100) - Example sentences
+        if (sections.writingPart2) {
+            const part2Text = sections.writingPart2[0];
+            const sentencePattern = /(\d+)\.\s*([^\.]+(?:\.[^\.]+)*)/g;
+            let match;
+            const answers = new Array(5).fill('');
+
+            while ((match = sentencePattern.exec(part2Text)) !== null) {
+                const num = parseInt(match[1]);
+                if (num >= 96 && num <= 100) {
+                    const sentence = match[2].trim();
+                    // Clean up the sentence (remove extra spaces, normalize punctuation)
+                    answers[num - 96] = sentence.replace(/\s+/g, ' ').replace(/\.$/, '');
+                }
+            }
+            answerKey.writing.part2 = answers;
+        }
+
+        // Validate we got reasonable data
+        const hasListening = answerKey.listening.part1.length > 0 ||
+                           answerKey.listening.part2.length > 0 ||
+                           answerKey.listening.part3.length > 0;
+        const hasReading = answerKey.reading.part1.length > 0 ||
+                          answerKey.reading.part2.length > 0 ||
+                          answerKey.reading.part3.length > 0;
+
+        if (hasListening || hasReading) {
+            console.log('Successfully parsed answer key:', answerKey);
+            return answerKey;
+        }
+
+        return null;
+    } catch (error) {
+        console.error('Parse error:', error);
+        return null;
+    }
+}
+            checkReadyToStart() {
+                if (this.filesUploaded.exam) {
+                    document.getElementById('beginExamBtn').disabled = false;
+                }
+            }
+
+            async beginExam() {
+                document.getElementById('setupScreen').style.display = 'none';
+                document.getElementById('examMode').classList.add('active');
+
+                if (this.pdfDoc) {
+                    await this.renderPage(1);
+                    document.getElementById('pdfNav').style.display = 'block';
+                }
+
+                if (this.filesUploaded.audio) {
+                    document.getElementById('audioControls').classList.remove('hidden');
+                }
+
+                this.generateAnswerSheet();
+            }
+
+            async renderPage(pageNum) {
+                if (!this.pdfDoc || pageNum < 1 || pageNum > this.totalPages) return;
+
+                this.currentPage = pageNum;
+                document.getElementById('currentPage').textContent = pageNum;
+
+                const page = await this.pdfDoc.getPage(pageNum);
+                const viewport = page.getViewport({ scale: 1.5 });
+
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                document.getElementById('pdfViewer').innerHTML = '';
+                document.getElementById('pdfViewer').appendChild(canvas);
+
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
+            }
+
+            changePage(delta) {
+                const newPage = this.currentPage + delta;
+                if (newPage >= 1 && newPage <= this.totalPages) {
+                    this.renderPage(newPage);
+                }
+            }
+
+            generateAnswerSheet() {
+                let html = '';
+
+                html += `<div class="question-group">
+                    <h4>👂 Listening (45 questions)</h4>
+                    <div class="info-box"><strong>Part 1 (1-10):</strong> 对/错 | <strong>Part 2 (11-25):</strong> A/B/C/D | <strong>Part 3 (26-45):</strong> A/B/C/D</div>`;
+
+                for (let i = 1; i <= 10; i++) {
+                    html += `<div class="question-item">
+                        <div class="question-label">${i}.</div>
+                        <div class="option-row">
+                            <label><input type="radio" name="l1_${i}" value="true" onchange="app.saveAnswer('listening', 'part1', ${i-1}, this.value)"> 对 (T)</label>
+                            <label><input type="radio" name="l1_${i}" value="false" onchange="app.saveAnswer('listening', 'part1', ${i-1}, this.value)"> 错 (F)</label>
+                        </div>
+                    </div>`;
+                }
+
+                for (let i = 11; i <= 25; i++) {
+                    html += `<div class="question-item">
+                        <div class="question-label">${i}.</div>
+                        <div class="option-row">
+                            ${['A', 'B', 'C', 'D'].map(opt =>
+                                `<label><input type="radio" name="l2_${i}" value="${opt}" onchange="app.saveAnswer('listening', 'part2', ${i-11}, this.value)"> ${opt}</label>`
+                            ).join('')}
+                        </div>
+                    </div>`;
+                }
+
+                for (let i = 26; i <= 45; i++) {
+                    html += `<div class="question-item">
+                        <div class="question-label">${i}.</div>
+                        <div class="option-row">
+                            ${['A', 'B', 'C', 'D'].map(opt =>
+                                `<label><input type="radio" name="l3_${i}" value="${opt}" onchange="app.saveAnswer('listening', 'part3', ${i-26}, this.value)"> ${opt}</label>`
+                            ).join('')}
+                        </div>
+                    </div>`;
+                }
+                html += `</div>`;
+
+                html += `<div class="question-group">
+                    <h4>📖 Reading (40 questions)</h4>
+                    <div class="info-box"><strong>Part 1 (46-55):</strong> A-F | <strong>Part 2 (56-65):</strong> ABC Order | <strong>Part 3 (66-85):</strong> A/B/C/D</div>`;
+
+                for (let i = 46; i <= 55; i++) {
+                    html += `<div class="question-item">
+                        <div class="question-label">${i}. Enter letter (A-F):</div>
+                        <input type="text" maxlength="1" oninput="this.value=this.value.toUpperCase().replace(/[^A-F]/g,'')" onchange="app.saveAnswer('reading', 'part1', ${i-46}, this.value)">
+                    </div>`;
+                }
+
+                for (let i = 56; i <= 65; i++) {
+                    html += `<div class="question-item">
+                        <div class="question-label">${i}. Order (e.g., ABC):</div>
+                        <input type="text" maxlength="3" placeholder="ABC" oninput="this.value=this.value.toUpperCase().replace(/[^A-C]/g,'')" onchange="app.saveAnswer('reading', 'part2', ${i-56}, this.value)">
+                    </div>`;
+                }
+
+                for (let i = 66; i <= 85; i++) {
+                    html += `<div class="question-item">
+                        <div class="question-label">${i}.</div>
+                        <div class="option-row">
+                            ${['A', 'B', 'C', 'D'].map(opt =>
+                                `<label><input type="radio" name="r3_${i}" value="${opt}" onchange="app.saveAnswer('reading', 'part3', ${i-66}, this.value)"> ${opt}</label>`
+                            ).join('')}
+                        </div>
+                    </div>`;
+                }
+                html += `</div>`;
+
+                html += `<div class="question-group">
+                    <h4>✏️ Writing (15 questions)</h4>
+                    <div class="info-box"><strong>Part 1 (86-95):</strong> Construct sentences | <strong>Part 2 (96-100):</strong> Picture descriptions</div>`;
+
+                for (let i = 86; i <= 95; i++) {
+                    html += `<div class="question-item">
+                        <div class="question-label">${i}. Write sentence:</div>
+                        <textarea oninput="app.saveAnswer('writing', 'part1', ${i-86}, this.value)" placeholder="Type your sentence..."></textarea>
+                    </div>`;
+                }
+
+                for (let i = 96; i <= 100; i++) {
+                    html += `<div class="question-item">
+                        <div class="question-label">${i}. Picture sentence:</div>
+                        <textarea oninput="app.saveAnswer('writing', 'part2', ${i-96}, this.value)" placeholder="Describe the picture..."></textarea>
+                    </div>`;
+                }
+                html += `</div>`;
+
+                document.getElementById('answerContainer').innerHTML = html;
+            }
+
+            saveAnswer(section, part, index, value) {
+                this.userAnswers[section][part][index] = value;
+            }
+
+            startSection() {
+                if (this.examState.isRunning) return;
+
+                this.examState.isRunning = true;
+                this.examState.isPaused = false;
+
+                const section = this.examState.currentSection;
+                const part = this.examState.currentPart;
+                const time = this.examTiming[section][`part${part}`];
+
+                this.examState.timeRemaining = time;
+                this.examState.totalTime = time;
+
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('pauseBtn').disabled = false;
+
+                if (section === 'listening') {
+                    const audio = document.getElementById('audioPlayer');
+                    if (audio.src) {
+                        audio.play().catch(() => {
+                            alert('Click play button on audio player to start');
+                        });
+                    }
+                }
+
+                if (this.timerInterval) clearInterval(this.timerInterval);
+                this.timerInterval = setInterval(() => this.updateTimer(), 1000);
+            }
+
+            updateTimer() {
+                if (!this.examState.isRunning || this.examState.isPaused) return;
+
+                if (this.examState.timeRemaining > 0) {
+                    this.examState.timeRemaining--;
+                    const mins = Math.floor(this.examState.timeRemaining / 60);
+                    const secs = this.examState.timeRemaining % 60;
+                    const timerEl = document.getElementById('timer');
+                    timerEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+
+                    if (this.examState.timeRemaining < 60) {
+                        timerEl.classList.add('warning');
+                    } else {
+                        timerEl.classList.remove('warning');
+                    }
+                } else {
+                    this.endSection();
+                }
+            }
+
+            pauseTimer() {
+                this.examState.isPaused = !this.examState.isPaused;
+                const btn = document.getElementById('pauseBtn');
+                const audio = document.getElementById('audioPlayer');
+
+                if (this.examState.isPaused) {
+                    btn.textContent = '▶ Resume';
+                    audio.pause();
+                } else {
+                    btn.textContent = '⏸ Pause';
+                    if (this.examState.currentSection === 'listening' && audio.src) {
+                        audio.play();
+                    }
+                }
+            }
+
+            endSection() {
+                clearInterval(this.timerInterval);
+                document.getElementById('audioPlayer').pause();
+
+                const { currentSection, currentPart } = this.examState;
+
+                if (currentSection === 'listening' && currentPart < 3) {
+                    this.examState.currentPart++;
+                } else if (currentSection === 'listening') {
+                    this.examState.currentSection = 'reading';
+                    this.examState.currentPart = 1;
+                    document.getElementById('audioControls').classList.add('hidden');
+                    alert('Listening section complete! Moving to Reading section.');
+                } else if (currentSection === 'reading' && currentPart < 3) {
+                    this.examState.currentPart++;
+                } else if (currentSection === 'reading') {
+                    this.examState.currentSection = 'writing';
+                    this.examState.currentPart = 1;
+                    alert('Reading section complete! Moving to Writing section.');
+                } else if (currentSection === 'writing' && currentPart < 2) {
+                    this.examState.currentPart++;
+                } else {
+                    alert('Exam complete! Click Submit Exam to see results.');
+                    this.examState.isRunning = false;
+                    document.getElementById('startBtn').disabled = true;
+                    document.getElementById('pauseBtn').disabled = true;
+                    return;
+                }
+
+                this.examState.isRunning = false;
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('pauseBtn').disabled = true;
+                document.getElementById('startBtn').textContent = '▶ Start Next Section';
+
+                this.updateSectionIndicator();
+            }
+
+            updateSectionIndicator() {
+                const sections = { listening: 'Listening', reading: 'Reading', writing: 'Writing' };
+                const text = `${sections[this.examState.currentSection]} - Part ${this.examState.currentPart}`;
+                document.getElementById('currentSection').textContent = text;
+            }
+
+            submitExam() {
+                if (!confirm('Submit exam and see results?')) return;
+
+                clearInterval(this.timerInterval);
+                this.examState.isRunning = false;
+                document.getElementById('audioPlayer').pause();
+
+                const results = this.calculateResults();
+                this.displayResults(results);
+            }
+
+            calculateResults() {
+                const results = {
+                    listening: { score: 0, total: 45, details: { part1: 0, part2: 0, part3: 0 } },
+                    reading: { score: 0, total: 40, details: { part1: 0, part2: 0, part3: 0 } },
+                    writing: { score: 0, total: 15 },
+                    totalScore: 0,
+                    totalQuestions: 100,
+                    hasAnswerKey: !!this.answerKey
+                };
+
+                if (this.answerKey) {
+                    ['part1', 'part2', 'part3'].forEach(part => {
+                        const userAns = this.userAnswers.listening[part];
+                        const correctAns = this.answerKey.listening?.[part];
+                        if (correctAns) {
+                            userAns.forEach((ans, i) => {
+                                if (ans !== null && ans?.toString().toLowerCase() === correctAns[i]?.toString().toLowerCase()) {
+                                    results.listening.score++;
+                                    results.listening.details[part]++;
+                                }
+                            });
+                        }
+                    });
+
+                    ['part1', 'part2', 'part3'].forEach(part => {
+                        const userAns = this.userAnswers.reading[part];
+                        const correctAns = this.answerKey.reading?.[part];
+                        if (correctAns) {
+                            userAns.forEach((ans, i) => {
+                                if (ans && ans.toString().toUpperCase() === correctAns[i]?.toString().toUpperCase()) {
+                                    results.reading.score++;
+                                    results.reading.details[part]++;
+                                }
+                            });
+                        }
+                    });
+                }
+
+                results.totalScore = results.listening.score + results.reading.score;
+                return results;
+            }
+
+            displayResults(results) {
+                const getPercentage = (score, total) => Math.round((score / total) * 100);
+                const getFeedback = (pct) => {
+                    if (pct >= 90) return '🎉 Excellent!';
+                    if (pct >= 80) return '👍 Very Good!';
+                    if (pct >= 70) return '😊 Good!';
+                    if (pct >= 60) return '📚 Pass - Keep practicing!';
+                    return '📖 Needs improvement';
+                };
+
+                let html = `
+                    <div class="score-display">
+                        <h3>${results.totalScore} / ${results.totalQuestions}</h3>
+                        <p>${getPercentage(results.totalScore, results.totalQuestions)}%</p>
+                    </div>
+
+                    <div class="question-group">
+                        <h4>👂 Listening: ${results.listening.score}/${results.listening.total}</h4>
+                        ${results.hasAnswerKey ?
+                            `<p>${getPercentage(results.listening.score, results.listening.total)}% - ${getFeedback(getPercentage(results.listening.score, results.listening.total))}</p>
+                            <p style="font-size: 0.9rem; color: #6e6e73; margin-top: 8px;">Part 1: ${results.listening.details.part1}/10 | Part 2: ${results.listening.details.part2}/15 | Part 3: ${results.listening.details.part3}/20</p>` :
+                            '<p class="warning-box">No answer key - manual grading required</p>'}
+                    </div>
+
+                    <div class="question-group">
+                        <h4>📖 Reading: ${results.reading.score}/${results.reading.total}</h4>
+                        ${results.hasAnswerKey ?
+                            `<p>${getPercentage(results.reading.score, results.reading.total)}% - ${getFeedback(getPercentage(results.reading.score, results.reading.total))}</p>
+                            <p style="font-size: 0.9rem; color: #6e6e73; margin-top: 8px;">Part 1: ${results.reading.details.part1}/10 | Part 2: ${results.reading.details.part2}/10 | Part 3: ${results.reading.details.part3}/20</p>` :
+                            '<p class="warning-box">No answer key - manual grading required</p>'}
+                    </div>
+
+                    <div class="question-group">
+                        <h4>✏️ Writing: Manual Grading Required</h4>
+                        <p>Please grade your writing section manually using the answer key.</p>
+                    </div>
+
+                    <div class="question-group">
+                        <h4>📋 Your Answers Summary</h4>
+                        <div style="max-height: 300px; overflow-y: auto; font-size: 0.9rem; background: #fafafa; padding: 20px; border-radius: 10px;">
+                            ${this.formatAnswersSummary()}
+                        </div>
+                    </div>
+
+                    ${!results.hasAnswerKey ? `
+                    <div class="warning-box">
+                        <strong>📌 Manual Grading Instructions:</strong>
+                        <ol style="margin: 10px 0 0 20px; font-size: 0.9rem;">
+                            <li>Compare your answers above with the answer key</li>
+                            <li>Count correct answers for each section</li>
+                            <li>Calculate your final score</li>
+                        </ol>
+                    </div>
+                    ` : ''}
+
+                    <div class="info-box" style="margin-top: 20px;">
+                        <strong>HSK 4 Passing Score:</strong> 180/300 points (60%)
+                        <br>Listening + Reading = 200 points | Writing = 100 points
+                    </div>
+                `;
+
+                document.getElementById('resultsContent').innerHTML = html;
+                document.getElementById('resultsModal').classList.remove('hidden');
+            }
+
+            formatAnswersSummary() {
+                let html = '';
+                const sections = {
+                    listening: { name: '👂 Listening', parts: { part1: [1, 10], part2: [11, 25], part3: [26, 45] } },
+                    reading: { name: '📖 Reading', parts: { part1: [46, 55], part2: [56, 65], part3: [66, 85] } },
+                    writing: { name: '✏️ Writing', parts: { part1: [86, 95], part2: [96, 100] } }
+                };
+
+                for (const [section, data] of Object.entries(sections)) {
+                    html += `<div style="margin-bottom: 20px;"><strong>${data.name}</strong><br><div style="margin-top: 8px;">`;
+
+                    for (const [part, range] of Object.entries(data.parts)) {
+                        const answers = this.userAnswers[section][part];
+                        const startNum = range[0];
+
+                        answers.forEach((ans, idx) => {
+                            if (ans !== null && ans !== '') {
+                                const qNum = startNum + idx;
+                                const displayAns = typeof ans === 'string' && ans.length > 30 ?
+                                    ans.substring(0, 30) + '...' : ans;
+                                html += `Q${qNum}: <strong>${displayAns}</strong> | `;
+                            }
+                        });
+                    }
+                    html += '</div></div>';
+                }
+
+                return html || '<p>No answers recorded</p>';
+            }
+
+            closeResults() {
+                document.getElementById('resultsModal').classList.add('hidden');
+            }
+
+            exportResults() {
+                const data = {
+                    timestamp: new Date().toISOString(),
+                    answers: this.userAnswers,
+                    answerKey: this.answerKey,
+                    section: this.examState.currentSection,
+                    part: this.examState.currentPart
+                };
+
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `hsk4_results_${new Date().toISOString().slice(0, 10)}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                alert('Results exported successfully!');
+            }
+        }
+
+        const app = new HSK4ExamApp();
+    </script>
+</body>
+</html>
