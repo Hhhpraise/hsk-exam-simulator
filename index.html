@@ -138,13 +138,26 @@
                         <div style="padding: 15px; border-bottom: 1px solid #e5e5e7; background: white;">
                             <h4 style="margin: 0; font-size: 1.1rem;">🔑 Answer Key</h4>
                         </div>
-                        <div class="pdf-viewer-container" id="answerKeyPdfViewer">
-                            <!-- Answer key PDF will be rendered here -->
+                        <!-- Answer Key Zoom Controls -->
+                        <div class="answer-key-zoom-controls" id="answerKeyZoomControls" style="display: none;">
+                            <button class="btn btn-secondary" onclick="app.zoomOutAnswerKey()" title="Zoom Out">-</button>
+                            <span style="font-size: 0.8rem;">Zoom: <span id="answerKeyZoomLevel">100</span>%</span>
+                            <button class="btn btn-secondary" onclick="app.zoomInAnswerKey()" title="Zoom In">+</button>
+                            <button class="btn btn-secondary" onclick="app.resetZoomAnswerKey()" title="Reset Zoom">⟲ Reset</button>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <button class="btn btn-secondary" onclick="app.fitToWidthAnswerKey()" title="Fit to Width">↔ Fit Width</button>
+                                <button class="btn btn-secondary" onclick="app.fitToPageAnswerKey()" title="Fit to Page">⤢ Fit Page</button>
+                            </div>
                         </div>
-                        <div style="padding: 10px; border-top: 1px solid #e5e5e7; background: white; text-align: center;">
-                            <button class="btn btn-secondary" onclick="app.changeAnswerKeyPage(-1)">◀</button>
-                            <span style="margin: 0 10px; font-size: 0.9rem;">Page <span id="answerKeyCurrentPage">1</span></span>
-                            <button class="btn btn-secondary" onclick="app.changeAnswerKeyPage(1)">▶</button>
+                        <div class="pdf-viewer-container">
+                            <div id="answerKeyPdfViewer">
+                                <!-- Answer key PDF will be rendered here -->
+                            </div>
+                            <div style="padding: 10px; border-top: 1px solid #e5e5e7; background: white; text-align: center;">
+                                <button class="btn btn-secondary" onclick="app.changeAnswerKeyPage(-1)">◀</button>
+                                <span style="margin: 0 10px; font-size: 0.9rem;">Page <span id="answerKeyCurrentPage">1</span></span>
+                                <button class="btn btn-secondary" onclick="app.changeAnswerKeyPage(1)">▶</button>
+                            </div>
                         </div>
                     </div>
 

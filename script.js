@@ -71,11 +71,17 @@ class HSK4ExamApp {
         this.currentGradingSection = 'listening';
         this.isManualGradingActive = false;
 
-        // Zoom properties
+        // Main PDF Zoom properties
         this.pdfScale = 1.0; // Current zoom scale (1.0 = 100%)
         this.minScale = 0.3; // Minimum zoom (30%)
-        this.maxScale = 5.0; // Increased maximum zoom (500%)
-        this.scaleStep = 0.2; // Increased zoom step size
+        this.maxScale = 5.0; // Maximum zoom (500%)
+        this.scaleStep = 0.2; // Zoom step size
+
+        // Answer Key PDF Zoom properties
+        this.answerKeyScale = 1.0;
+        this.answerKeyMinScale = 0.3;
+        this.answerKeyMaxScale = 5.0;
+        this.answerKeyScaleStep = 0.2;
 
         this.init();
         this.showHistoryModalOnStart();
@@ -107,17 +113,29 @@ class HSK4ExamApp {
             // Ctrl + Plus or Ctrl + = (the same key for plus when shift is not pressed)
             if ((e.ctrlKey && (e.key === '+' || e.key === '='))) {
                 e.preventDefault();
-                this.zoomIn();
+                if (document.getElementById('manualGradingContainer').classList.contains('hidden')) {
+                    this.zoomIn();
+                } else {
+                    this.zoomInAnswerKey();
+                }
             }
             // Ctrl + Minus
             else if (e.ctrlKey && e.key === '-') {
                 e.preventDefault();
-                this.zoomOut();
+                if (document.getElementById('manualGradingContainer').classList.contains('hidden')) {
+                    this.zoomOut();
+                } else {
+                    this.zoomOutAnswerKey();
+                }
             }
             // Ctrl + 0 (reset zoom)
             else if (e.ctrlKey && e.key === '0') {
                 e.preventDefault();
-                this.resetZoom();
+                if (document.getElementById('manualGradingContainer').classList.contains('hidden')) {
+                    this.resetZoom();
+                } else {
+                    this.resetZoomAnswerKey();
+                }
             }
         });
 
@@ -128,9 +146,17 @@ class HSK4ExamApp {
                 if (e.ctrlKey) {
                     e.preventDefault();
                     if (e.deltaY < 0) {
-                        this.zoomIn();
+                        if (document.getElementById('manualGradingContainer').classList.contains('hidden')) {
+                            this.zoomIn();
+                        } else {
+                            this.zoomInAnswerKey();
+                        }
                     } else {
-                        this.zoomOut();
+                        if (document.getElementById('manualGradingContainer').classList.contains('hidden')) {
+                            this.zoomOut();
+                        } else {
+                            this.zoomOutAnswerKey();
+                        }
                     }
                 }
             }, { passive: false });
@@ -225,7 +251,7 @@ class HSK4ExamApp {
         }
     }
 
-    // ========== PDF RENDERING FUNCTIONS ==========
+    // ========== MAIN PDF RENDERING FUNCTIONS ==========
 
     async renderPage(pageNum) {
         if (!this.pdfDoc || pageNum < 1 || pageNum > this.totalPages) return;
@@ -269,9 +295,16 @@ class HSK4ExamApp {
         // Show zoom controls and update zoom level
         document.getElementById('pdfControls').style.display = 'flex';
         this.updateZoomDisplay();
+
+        // Reset scroll position to top-left
+        const pdfContainer = container.parentElement;
+        if (pdfContainer) {
+            pdfContainer.scrollTop = 0;
+            pdfContainer.scrollLeft = 0;
+        }
     }
 
-    // ========== ZOOM FUNCTIONS ==========
+    // ========== MAIN PDF ZOOM FUNCTIONS ==========
 
     zoomIn() {
         if (this.pdfScale < this.maxScale) {
@@ -346,6 +379,8 @@ class HSK4ExamApp {
         }
     }
 
+    // ========== ANSWER KEY PDF RENDERING FUNCTIONS ==========
+
     async renderAnswerKeyPage(pageNum) {
         if (!this.answerKeyPdf || pageNum < 1 || pageNum > this.answerKeyTotalPages) return;
 
@@ -358,41 +393,107 @@ class HSK4ExamApp {
         // Clear container
         container.innerHTML = '';
 
-        // Get container dimensions
-        const containerWidth = container.clientWidth - 20;
-        const containerHeight = container.clientHeight - 20;
-
-        // Get PDF viewport
-        const viewport = page.getViewport({ scale: 1 });
-        const pdfWidth = viewport.width;
-        const pdfHeight = viewport.height;
-
-        // Calculate scale to fit container
-        const scale = Math.min(containerWidth / pdfWidth, containerHeight / pdfHeight);
-
-        // Apply scale
-        const scaledViewport = page.getViewport({ scale: scale });
+        // Get viewport at current scale
+        const viewport = page.getViewport({ scale: this.answerKeyScale });
 
         // Create canvas
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
-        canvas.width = scaledViewport.width;
-        canvas.height = scaledViewport.height;
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
 
         // Set canvas style
-        canvas.style.maxWidth = '100%';
-        canvas.style.maxHeight = '100%';
-        canvas.style.objectFit = 'contain';
+        canvas.style.width = viewport.width + 'px';
+        canvas.style.height = viewport.height + 'px';
+        canvas.style.display = 'block';
+        canvas.style.margin = '0';
         canvas.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
 
         // Render PDF
         await page.render({
             canvasContext: context,
-            viewport: scaledViewport
+            viewport: viewport
         }).promise;
 
         // Add to container
         container.appendChild(canvas);
+        
+        // Show answer key zoom controls
+        document.getElementById('answerKeyZoomControls').style.display = 'flex';
+        this.updateAnswerKeyZoomDisplay();
+
+        // Reset scroll position to top-left
+        if (container) {
+            container.scrollTop = 0;
+            container.scrollLeft = 0;
+        }
+    }
+
+    // ========== ANSWER KEY PDF ZOOM FUNCTIONS ==========
+
+    zoomInAnswerKey() {
+        if (this.answerKeyScale < this.answerKeyMaxScale) {
+            this.answerKeyScale = Math.min(this.answerKeyMaxScale, this.answerKeyScale + this.answerKeyScaleStep);
+            this.updateAnswerKeyZoomDisplay();
+            this.renderAnswerKeyPage(this.answerKeyCurrentPage);
+        }
+    }
+
+    zoomOutAnswerKey() {
+        if (this.answerKeyScale > this.answerKeyMinScale) {
+            this.answerKeyScale = Math.max(this.answerKeyMinScale, this.answerKeyScale - this.answerKeyScaleStep);
+            this.updateAnswerKeyZoomDisplay();
+            this.renderAnswerKeyPage(this.answerKeyCurrentPage);
+        }
+    }
+
+    resetZoomAnswerKey() {
+        this.answerKeyScale = 1.0;
+        this.updateAnswerKeyZoomDisplay();
+        this.renderAnswerKeyPage(this.answerKeyCurrentPage);
+    }
+
+    async fitToWidthAnswerKey() {
+        if (!this.answerKeyPdf || !this.answerKeyCurrentPage) return;
+        
+        const page = await this.answerKeyPdf.getPage(this.answerKeyCurrentPage);
+        const container = document.querySelector('.pdf-viewer-container');
+        const containerWidth = container.clientWidth - 20; // Account for padding
+        
+        // Get page width at scale 1.0
+        const viewport = page.getViewport({ scale: 1.0 });
+        const pageWidth = viewport.width;
+        
+        // Calculate scale to fit width
+        this.answerKeyScale = containerWidth / pageWidth;
+        this.updateAnswerKeyZoomDisplay();
+        this.renderAnswerKeyPage(this.answerKeyCurrentPage);
+    }
+
+    async fitToPageAnswerKey() {
+        if (!this.answerKeyPdf || !this.answerKeyCurrentPage) return;
+        
+        const page = await this.answerKeyPdf.getPage(this.answerKeyCurrentPage);
+        const container = document.querySelector('.pdf-viewer-container');
+        const containerWidth = container.clientWidth - 20;
+        const containerHeight = container.clientHeight - 60; // Account for controls
+        
+        const viewport = page.getViewport({ scale: 1.0 });
+        const pageWidth = viewport.width;
+        const pageHeight = viewport.height;
+        
+        // Calculate scale to fit within container
+        const scaleWidth = containerWidth / pageWidth;
+        const scaleHeight = containerHeight / pageHeight;
+        this.answerKeyScale = Math.min(scaleWidth, scaleHeight);
+        
+        this.updateAnswerKeyZoomDisplay();
+        this.renderAnswerKeyPage(this.answerKeyCurrentPage);
+    }
+
+    updateAnswerKeyZoomDisplay() {
+        const zoomPercent = Math.round(this.answerKeyScale * 100);
+        document.getElementById('answerKeyZoomLevel').textContent = zoomPercent;
     }
 
     parseAnswerKeyText(text) {
@@ -746,9 +847,9 @@ class HSK4ExamApp {
         document.getElementById('manualScoreEntryContainer').classList.add('hidden');
         document.getElementById('resultsContent').innerHTML = '';
 
-        // Render answer key PDF
+        // Render answer key PDF with fit to page
         if (this.answerKeyPdf) {
-            await this.renderAnswerKeyPage(1);
+            await this.fitToPageAnswerKey();
         }
 
         // Generate grading interface
