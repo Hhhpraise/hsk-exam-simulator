@@ -6,6 +6,8 @@
     <title>HSK 4 Exam Simulator</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- Add mammoth.js for .docx support -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
 <body>
     <!-- History Modal -->
@@ -47,8 +49,8 @@
 
         <div class="upload-card" id="answerCard" onclick="document.getElementById('answerPdfInput').click()">
             <h3><span class="upload-icon">🔑</span> Answer Key (Optional)</h3>
-            <p style="color: #6e6e73; margin: 5px 0;">Upload answer key PDF for automatic grading</p>
-            <input type="file" id="answerPdfInput" accept=".pdf" style="display: none;">
+            <p style="color: #6e6e73; margin: 5px 0;">Upload answer key PDF or Word document (.doc/.docx) for automatic grading</p>
+            <input type="file" id="answerPdfInput" accept=".pdf,.doc,.docx" style="display: none;">
             <div id="answerStatus"></div>
         </div>
 
@@ -78,7 +80,6 @@
                 <div class="pdf-header">
                     <h3>Exam Paper</h3>
                 </div>
-                <!-- Add the PDF Controls (Zoom) here -->
                 <div class="pdf-controls" id="pdfControls">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <button class="btn btn-secondary" onclick="app.zoomOut()" title="Zoom Out">-</button>
@@ -133,23 +134,32 @@
                 </div>
 
                 <div class="manual-grading-layout">
-                    <!-- Answer Key PDF Viewer -->
+                    <!-- Answer Key Viewer -->
                     <div class="manual-grading-pdf">
                         <div style="padding: 15px; border-bottom: 1px solid #e5e5e7; background: white;">
                             <h4 style="margin: 0; font-size: 1.1rem;">🔑 Answer Key</h4>
+                            <div class="file-type-indicator" id="fileTypeIndicator" style="font-size: 0.8rem; color: #6e6e73; margin-top: 5px;"></div>
                         </div>
-                        <!-- Answer Key Zoom Controls -->
-                        <div class="answer-key-zoom-controls" id="answerKeyZoomControls" style="display: none;">
-                            <button class="btn btn-secondary" onclick="app.zoomOutAnswerKey()" title="Zoom Out">-</button>
-                            <span style="font-size: 0.8rem;">Zoom: <span id="answerKeyZoomLevel">100</span>%</span>
-                            <button class="btn btn-secondary" onclick="app.zoomInAnswerKey()" title="Zoom In">+</button>
-                            <button class="btn btn-secondary" onclick="app.resetZoomAnswerKey()" title="Reset Zoom">⟲ Reset</button>
-                            <div style="display: flex; align-items: center; gap: 5px;">
-                                <button class="btn btn-secondary" onclick="app.fitToWidthAnswerKey()" title="Fit to Width">↔ Fit Width</button>
-                                <button class="btn btn-secondary" onclick="app.fitToPageAnswerKey()" title="Fit to Page">⤢ Fit Page</button>
+
+                        <!-- Word Document Viewer -->
+                        <div class="word-document-viewer" id="wordDocumentViewer" style="display: none;">
+                            <div id="wordDocumentContent">
+                                <!-- Word document content will be rendered here -->
                             </div>
                         </div>
-                        <div class="pdf-viewer-container">
+
+                        <!-- PDF Viewer with Controls -->
+                        <div class="pdf-viewer-container" id="pdfViewerContainer">
+                            <div class="answer-key-zoom-controls" id="answerKeyZoomControls" style="display: none;">
+                                <button class="btn btn-secondary" onclick="app.zoomOutAnswerKey()" title="Zoom Out">-</button>
+                                <span style="font-size: 0.8rem;">Zoom: <span id="answerKeyZoomLevel">100</span>%</span>
+                                <button class="btn btn-secondary" onclick="app.zoomInAnswerKey()" title="Zoom In">+</button>
+                                <button class="btn btn-secondary" onclick="app.resetZoomAnswerKey()" title="Reset Zoom">⟲ Reset</button>
+                                <div style="display: flex; align-items: center; gap: 5px;">
+                                    <button class="btn btn-secondary" onclick="app.fitToWidthAnswerKey()" title="Fit to Width">↔ Fit Width</button>
+                                    <button class="btn btn-secondary" onclick="app.fitToPageAnswerKey()" title="Fit to Page">⤢ Fit Page</button>
+                                </div>
+                            </div>
                             <div id="answerKeyPdfViewer">
                                 <!-- Answer key PDF will be rendered here -->
                             </div>
@@ -214,6 +224,7 @@
                 <button class="btn btn-primary" onclick="app.closeResults()">Close</button>
                 <button class="btn btn-secondary" onclick="app.saveToHistory()">💾 Save to History</button>
                 <button class="btn btn-secondary" onclick="app.exportResults()">📤 Export Results</button>
+                <button class="btn btn-secondary" onclick="app.exportAsPDF()" id="exportPDFBtn">📄 Export as PDF</button>
             </div>
         </div>
     </div>

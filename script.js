@@ -1,5 +1,134 @@
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
+// Function to parse Word documents
+async function parseWordDocument(arrayBuffer) {
+    try {
+        console.log('Parsing Word document, arrayBuffer size:', arrayBuffer.byteLength);
+
+        // First, try to extract as plain text for answer parsing
+        let text = '';
+
+        // Check if it's a .doc or .docx file by checking the first few bytes
+        const view = new DataView(arrayBuffer);
+        const firstBytes = [];
+        for (let i = 0; i < 8; i++) {
+            firstBytes.push(view.getUint8(i).toString(16));
+        }
+        const header = firstBytes.join(' ').toUpperCase();
+
+        console.log('File header:', header);
+
+        // Common Word document signatures
+        const docxSignature = '50 4B 3 4'; // PK (ZIP format for .docx)
+        const docSignature = 'D0 CF 11 E0 A1 B1 1A E1'; // .doc format
+
+        if (header.includes(docxSignature)) {
+            // It's a .docx file - use mammoth
+            console.log('Detected .docx format, using mammoth');
+            const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+            text = result.value;
+
+            // Try to get HTML for display
+            try {
+                const htmlResult = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+                return {
+                    text: text,
+                    html: htmlResult.value || `<pre>${text}</pre>`,
+                    success: true
+                };
+            } catch (htmlError) {
+                console.warn('Could not convert to HTML, using plain text:', htmlError);
+                return {
+                    text: text,
+                    html: `<div class="plain-text-content"><pre>${text}</pre></div>`,
+                    success: true
+                };
+            }
+        } else if (header.includes(docSignature) || header.includes('D0 CF')) {
+            // It's a .doc file (binary format) - mammoth might not work
+            console.log('Detected .doc format (binary), trying alternative methods');
+
+            // Try to read as text (might work for simple .doc files)
+            try {
+                const decoder = new TextDecoder('utf-8');
+                text = decoder.decode(arrayBuffer);
+
+                // If the text is mostly unreadable, try other encodings
+                if (text.length < 100 || text.replace(/[^\x20-\x7E]/g, '').length < text.length * 0.3) {
+                    console.log('UTF-8 decoding produced gibberish, trying other encodings');
+
+                    // Try common Chinese encodings
+                    const encodings = ['gbk', 'gb2312', 'gb18030', 'big5'];
+                    for (const encoding of encodings) {
+                        try {
+                            // Create a blob and use FileReader with encoding
+                            const blob = new Blob([arrayBuffer]);
+                            text = await new Promise((resolve) => {
+                                const reader = new FileReader();
+                                reader.onload = (e) => resolve(e.target.result);
+                                reader.readAsText(blob, encoding);
+                            });
+
+                            // Check if we got readable text
+                            const readableChars = text.replace(/[^\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFFa-zA-Z0-9\s.,!?;:]/g, '').length;
+                            if (readableChars > text.length * 0.2) {
+                                console.log(`Successfully decoded with ${encoding}`);
+                                break;
+                            }
+                        } catch (e) {
+                            console.log(`Failed with encoding ${encoding}:`, e);
+                        }
+                    }
+                }
+
+                return {
+                    text: text,
+                    html: `<div class="plain-text-content"><pre>${text}</pre></div>`,
+                    success: true
+                };
+            } catch (docError) {
+                console.error('Error reading .doc file:', docError);
+
+                // Fallback: Show error and suggest conversion
+                return {
+                    text: '',
+                    html: '<div class="error-message"><p>⚠️ This .doc file could not be parsed directly.</p><p>Please save it as .docx format and upload again, or copy the text into a plain text file.</p></div>',
+                    success: false,
+                    error: 'Unable to parse .doc file. Please convert to .docx format.'
+                };
+            }
+        } else {
+            // Unknown format, try as plain text
+            console.log('Unknown format, trying as plain text');
+            try {
+                const decoder = new TextDecoder('utf-8');
+                text = decoder.decode(arrayBuffer);
+
+                return {
+                    text: text,
+                    html: `<div class="plain-text-content"><pre>${text}</pre></div>`,
+                    success: true
+                };
+            } catch (error) {
+                return {
+                    text: '',
+                    html: '<div class="error-message"><p>⚠️ Unable to read file. Please ensure it\'s a valid .docx or plain text file.</p></div>',
+                    success: false,
+                    error: error.message
+                };
+            }
+        }
+    } catch (error) {
+        console.error('Error in parseWordDocument:', error);
+        return {
+            text: '',
+            html: `<div class="error-message"><p>⚠️ Error parsing document: ${error.message}</p><p>Try converting to .docx format or extracting the text.</p></div>`,
+            success: false,
+            error: error.message
+        };
+    }
+}
+
 class HSK4ExamApp {
     constructor() {
         this.pdfDoc = null;
@@ -71,11 +200,16 @@ class HSK4ExamApp {
         this.currentGradingSection = 'listening';
         this.isManualGradingActive = false;
 
+        // Word document support
+        this.wordDocumentContent = null;
+        this.wordDocumentFileName = '';
+        this.answerKeyFileType = ''; // 'pdf' or 'word'
+
         // Main PDF Zoom properties
-        this.pdfScale = 1.0; // Current zoom scale (1.0 = 100%)
-        this.minScale = 0.3; // Minimum zoom (30%)
-        this.maxScale = 5.0; // Maximum zoom (500%)
-        this.scaleStep = 0.2; // Zoom step size
+        this.pdfScale = 1.0;
+        this.minScale = 0.3;
+        this.maxScale = 5.0;
+        this.scaleStep = 0.2;
 
         // Answer Key PDF Zoom properties
         this.answerKeyScale = 1.0;
@@ -101,7 +235,7 @@ class HSK4ExamApp {
         });
 
         document.getElementById('answerPdfInput').addEventListener('change', (e) => {
-            if (e.target.files[0]) this.loadAnswerKeyPdf(e.target.files[0]);
+            if (e.target.files[0]) this.loadAnswerKey(e.target.files[0]);
         });
 
         this.updateSectionIndicator();
@@ -205,7 +339,7 @@ class HSK4ExamApp {
             this.checkReadyToStart();
 
             document.getElementById('totalPages').textContent = this.totalPages;
-            
+
             // Initial render with fit to page
             await this.fitToPage();
         } catch (error) {
@@ -221,11 +355,19 @@ class HSK4ExamApp {
         document.getElementById('audioCard').classList.add('uploaded');
     }
 
-    async loadAnswerKeyPdf(file) {
-        try {
-            const arrayBuffer = await file.arrayBuffer();
+    async loadAnswerKey(file) {
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const fileName = file.name.toLowerCase();
+        this.wordDocumentFileName = file.name;
+
+        // Check file extension
+        if (fileName.endsWith('.pdf')) {
+            this.answerKeyFileType = 'pdf';
+            // Handle PDF files
             this.answerKeyPdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             this.answerKeyTotalPages = this.answerKeyPdf.numPages;
+            document.getElementById('answerKeyTotalPages').textContent = this.answerKeyTotalPages;
 
             // Try to parse answer key from PDF text
             let fullText = '';
@@ -239,17 +381,49 @@ class HSK4ExamApp {
             this.answerKey = this.parseAnswerKeyText(fullText);
 
             if (this.answerKey) {
-                document.getElementById('answerStatus').innerHTML = '<div class="upload-status">✅ Parsed successfully - Auto-grading enabled</div>';
+                document.getElementById('answerStatus').innerHTML = '<div class="upload-status">✅ PDF parsed successfully - Auto-grading enabled</div>';
             } else {
-                document.getElementById('answerStatus').innerHTML = '<div class="upload-status" style="color: #ff9800;">✅ Loaded - Use manual grading</div>';
+                document.getElementById('answerStatus').innerHTML = '<div class="upload-status" style="color: #ff9800;">✅ PDF loaded - Use manual grading</div>';
             }
 
             document.getElementById('answerCard').classList.add('uploaded');
             this.filesUploaded.answer = true;
-        } catch (error) {
-            alert('Error loading answer key PDF: ' + error.message);
+
+        } else if (fileName.endsWith('.docx') || fileName.endsWith('.doc')) {
+            this.answerKeyFileType = 'word';
+            // Handle Word documents
+            const wordResult = await parseWordDocument(arrayBuffer);
+
+            if (wordResult.success) {
+                // Store the HTML content for display
+                this.wordDocumentContent = wordResult.html;
+
+                // Parse the text for answers
+                this.answerKey = this.parseAnswerKeyText(wordResult.text);
+
+                if (this.answerKey) {
+                    document.getElementById('answerStatus').innerHTML = '<div class="upload-status">✅ Document parsed successfully - Auto-grading enabled</div>';
+                } else {
+                    document.getElementById('answerStatus').innerHTML = '<div class="upload-status" style="color: #ff9800;">✅ Document loaded - Use manual grading</div>';
+                }
+
+                document.getElementById('answerCard').classList.add('uploaded');
+                this.filesUploaded.answer = true;
+            } else {
+                // Show error but still allow manual grading
+                document.getElementById('answerStatus').innerHTML = `<div class="upload-status" style="color: #ff9800;">⚠️ ${wordResult.error || 'Document loaded with issues - Use manual grading'}</div>`;
+                document.getElementById('answerCard').classList.add('uploaded');
+                this.filesUploaded.answer = true;
+                this.wordDocumentContent = wordResult.html; // Still show the error message
+            }
+        } else {
+            alert('Unsupported file format. Please upload PDF or Word document (.doc/.docx).');
         }
+    } catch (error) {
+        console.error('Error loading answer key:', error);
+        alert('Error loading answer key: ' + error.message);
     }
+}
 
     // ========== MAIN PDF RENDERING FUNCTIONS ==========
 
@@ -271,7 +445,7 @@ class HSK4ExamApp {
         // Create canvas
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
-        
+
         // Set canvas dimensions to match viewport
         canvas.width = viewport.width;
         canvas.height = viewport.height;
@@ -291,7 +465,7 @@ class HSK4ExamApp {
 
         // Add to container
         container.appendChild(canvas);
-        
+
         // Show zoom controls and update zoom level
         document.getElementById('pdfControls').style.display = 'flex';
         this.updateZoomDisplay();
@@ -330,15 +504,15 @@ class HSK4ExamApp {
 
     async fitToWidth() {
         if (!this.pdfDoc || !this.currentPage) return;
-        
+
         const page = await this.pdfDoc.getPage(this.currentPage);
         const container = document.querySelector('.pdf-container');
         const containerWidth = container.clientWidth - 40; // Account for padding
-        
+
         // Get page width at scale 1.0
         const viewport = page.getViewport({ scale: 1.0 });
         const pageWidth = viewport.width;
-        
+
         // Calculate scale to fit width
         this.pdfScale = containerWidth / pageWidth;
         this.updateZoomDisplay();
@@ -347,21 +521,21 @@ class HSK4ExamApp {
 
     async fitToPage() {
         if (!this.pdfDoc || !this.currentPage) return;
-        
+
         const page = await this.pdfDoc.getPage(this.currentPage);
         const container = document.querySelector('.pdf-container');
         const containerWidth = container.clientWidth - 40;
         const containerHeight = container.clientHeight - 40;
-        
+
         const viewport = page.getViewport({ scale: 1.0 });
         const pageWidth = viewport.width;
         const pageHeight = viewport.height;
-        
+
         // Calculate scale to fit within container
         const scaleWidth = containerWidth / pageWidth;
         const scaleHeight = containerHeight / pageHeight;
         this.pdfScale = Math.min(scaleWidth, scaleHeight);
-        
+
         this.updateZoomDisplay();
         this.renderPage(this.currentPage);
     }
@@ -369,7 +543,7 @@ class HSK4ExamApp {
     updateZoomDisplay() {
         const zoomPercent = Math.round(this.pdfScale * 100);
         document.getElementById('zoomLevel').textContent = zoomPercent;
-        
+
         // Add or remove zoomed class based on scale
         const container = document.querySelector('.pdf-container');
         if (this.pdfScale > 1.0) {
@@ -417,7 +591,7 @@ class HSK4ExamApp {
 
         // Add to container
         container.appendChild(canvas);
-        
+
         // Show answer key zoom controls
         document.getElementById('answerKeyZoomControls').style.display = 'flex';
         this.updateAnswerKeyZoomDisplay();
@@ -455,15 +629,15 @@ class HSK4ExamApp {
 
     async fitToWidthAnswerKey() {
         if (!this.answerKeyPdf || !this.answerKeyCurrentPage) return;
-        
+
         const page = await this.answerKeyPdf.getPage(this.answerKeyCurrentPage);
         const container = document.querySelector('.pdf-viewer-container');
         const containerWidth = container.clientWidth - 20; // Account for padding
-        
+
         // Get page width at scale 1.0
         const viewport = page.getViewport({ scale: 1.0 });
         const pageWidth = viewport.width;
-        
+
         // Calculate scale to fit width
         this.answerKeyScale = containerWidth / pageWidth;
         this.updateAnswerKeyZoomDisplay();
@@ -472,21 +646,21 @@ class HSK4ExamApp {
 
     async fitToPageAnswerKey() {
         if (!this.answerKeyPdf || !this.answerKeyCurrentPage) return;
-        
+
         const page = await this.answerKeyPdf.getPage(this.answerKeyCurrentPage);
         const container = document.querySelector('.pdf-viewer-container');
         const containerWidth = container.clientWidth - 20;
         const containerHeight = container.clientHeight - 60; // Account for controls
-        
+
         const viewport = page.getViewport({ scale: 1.0 });
         const pageWidth = viewport.width;
         const pageHeight = viewport.height;
-        
+
         // Calculate scale to fit within container
         const scaleWidth = containerWidth / pageWidth;
         const scaleHeight = containerHeight / pageHeight;
         this.answerKeyScale = Math.min(scaleWidth, scaleHeight);
-        
+
         this.updateAnswerKeyZoomDisplay();
         this.renderAnswerKeyPage(this.answerKeyCurrentPage);
     }
@@ -504,68 +678,215 @@ class HSK4ExamApp {
                 writing: { part1: [], part2: [] }
             };
 
-            text = text.replace(/\s+/g, ' ').trim().toUpperCase();
+            text = text.replace(/\s+/g, ' ').trim();
 
-            // Improved parsing patterns
-            // Listening Part 1 (1-10): True/False
-            const listeningPart1Regex = /(?:一[、.]?听力.*?第一部分|第一部分)[\s\S]*?(\d+)[\s.]*([对√T]|[错×F])/gi;
+            // Convert Chinese characters to English for easier parsing
+            const chineseToEnglish = {
+                '对': 'true',
+                '√': 'true',
+                '错': 'false',
+                '×': 'false',
+                '×': 'false',
+                '一': '1',
+                '二': '2',
+                '三': '3',
+                '四': '4',
+                '五': '5',
+                '六': '6',
+                '七': '7',
+                '八': '8',
+                '九': '9',
+                '十': '10',
+                '．': '.',
+                '。': '.',
+                '，': ',',
+                '、': ','
+            };
+
+            let normalizedText = text;
+            for (const [chinese, english] of Object.entries(chineseToEnglish)) {
+                normalizedText = normalizedText.replace(new RegExp(chinese, 'g'), english);
+            }
+
+            normalizedText = normalizedText.toUpperCase();
+
+            // Enhanced parsing patterns for Chinese HSK answer keys
+            // Listen Part 1 (1-10): True/False
+            const listeningPart1Patterns = [
+                /(?:一[、.]?听力.*?第一部分|第一部分|听力第一部分|1\.?[\s]*听力)[\s\S]*?(\d+)[\s.]*([对√TTRUE]|[错×FFALSE])/gi,
+                /(\d+)[\s.]*([对√TTRUE]|[错×FFALSE])/g
+            ];
+
             let match;
-            while ((match = listeningPart1Regex.exec(text)) !== null) {
-                const num = parseInt(match[1]);
-                if (num >= 1 && num <= 10) {
-                    const answer = match[2].toUpperCase();
-                    answerKey.listening.part1[num - 1] = answer.includes('对') || answer.includes('√') || answer === 'T' ? 'true' : 'false';
+            for (const pattern of listeningPart1Patterns) {
+                pattern.lastIndex = 0;
+                while ((match = pattern.exec(normalizedText)) !== null) {
+                    const num = parseInt(match[1]);
+                    if (num >= 1 && num <= 10) {
+                        const answer = match[2].toUpperCase();
+                        answerKey.listening.part1[num - 1] =
+                            answer.includes('对') || answer.includes('√') ||
+                            answer === 'T' || answer === 'TRUE' ? 'true' : 'false';
+                    }
                 }
             }
 
-            // Listening Part 2 & 3 (11-45): A-D
-            const listeningABCRegex = /(?:第二[、.]部分|第三[、.]部分|第二部分|第三部分)[\s\S]*?(\d+)[\s.]*([A-D])/gi;
-            while ((match = listeningABCRegex.exec(text)) !== null) {
-                const num = parseInt(match[1]);
-                if (num >= 11 && num <= 25) {
-                    answerKey.listening.part2[num - 11] = match[2];
-                } else if (num >= 26 && num <= 45) {
-                    answerKey.listening.part3[num - 26] = match[2];
+            // Listening Part 2 (11-25): A-D
+            const listeningPart2Patterns = [
+                /(?:第二[、.]部分|第二部分|听力第二部分|2\.?[\s]*听力)[\s\S]*?(\d+)[\s.]*([A-D])/gi,
+                /(?:11|12|13|14|15|16|17|18|19|20|21|22|23|24|25)[\s.]*([A-D])/gi
+            ];
+
+            for (const pattern of listeningPart2Patterns) {
+                pattern.lastIndex = 0;
+                while ((match = pattern.exec(normalizedText)) !== null) {
+                    const num = parseInt(match[1] || match[0].match(/\d+/)[0]);
+                    if (num >= 11 && num <= 25) {
+                        answerKey.listening.part2[num - 11] = match[2] || match[1];
+                    }
+                }
+            }
+
+            // Listening Part 3 (26-45): A-D
+            const listeningPart3Patterns = [
+                /(?:第三[、.]部分|第三部分|听力第三部分|3\.?[\s]*听力)[\s\S]*?(\d+)[\s.]*([A-D])/gi,
+                /(?:26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42|43|44|45)[\s.]*([A-D])/gi
+            ];
+
+            for (const pattern of listeningPart3Patterns) {
+                pattern.lastIndex = 0;
+                while ((match = pattern.exec(normalizedText)) !== null) {
+                    const num = parseInt(match[1] || match[0].match(/\d+/)[0]);
+                    if (num >= 26 && num <= 45) {
+                        answerKey.listening.part3[num - 26] = match[2] || match[1];
+                    }
                 }
             }
 
             // Reading Part 1 (46-55): A-F
-            const readingPart1Regex = /(?:二[、.]?阅读.*?第一部分|第一部分)[\s\S]*?(\d+)[\s.]*([A-F])/gi;
-            while ((match = readingPart1Regex.exec(text)) !== null) {
-                const num = parseInt(match[1]);
-                if (num >= 46 && num <= 55) {
-                    answerKey.reading.part1[num - 46] = match[2];
+            const readingPart1Patterns = [
+                /(?:二[、.]?阅读.*?第一部分|阅读第一部分|第一部分|1\.?[\s]*阅读)[\s\S]*?(\d+)[\s.]*([A-F])/gi,
+                /(?:46|47|48|49|50|51|52|53|54|55)[\s.]*([A-F])/gi
+            ];
+
+            for (const pattern of readingPart1Patterns) {
+                pattern.lastIndex = 0;
+                while ((match = pattern.exec(normalizedText)) !== null) {
+                    const num = parseInt(match[1] || match[0].match(/\d+/)[0]);
+                    if (num >= 46 && num <= 55) {
+                        answerKey.reading.part1[num - 46] = match[2] || match[1];
+                    }
                 }
             }
 
             // Reading Part 2 (56-65): ABC order
-            const readingPart2Regex = /(?:第二[、.]部分|第二部分)[\s\S]*?(\d+)[\s.]*([A-C]{3})/gi;
-            while ((match = readingPart2Regex.exec(text)) !== null) {
-                const num = parseInt(match[1]);
-                if (num >= 56 && num <= 65) {
-                    answerKey.reading.part2[num - 56] = match[2];
+            const readingPart2Patterns = [
+                /(?:第二[、.]部分|第二部分|阅读第二部分|2\.?[\s]*阅读)[\s\S]*?(\d+)[\s.]*([A-C]{3})/gi,
+                /(?:56|57|58|59|60|61|62|63|64|65)[\s.]*([A-C]{3})/gi
+            ];
+
+            for (const pattern of readingPart2Patterns) {
+                pattern.lastIndex = 0;
+                while ((match = pattern.exec(normalizedText)) !== null) {
+                    const num = parseInt(match[1] || match[0].match(/\d+/)[0]);
+                    if (num >= 56 && num <= 65) {
+                        answerKey.reading.part2[num - 56] = match[2] || match[1];
+                    }
                 }
             }
 
             // Reading Part 3 (66-85): A-D
-            const readingPart3Regex = /(?:第三[、.]部分|第三部分)[\s\S]*?(\d+)[\s.]*([A-D])/gi;
-            while ((match = readingPart3Regex.exec(text)) !== null) {
+            const readingPart3Patterns = [
+                /(?:第三[、.]部分|第三部分|阅读第三部分|3\.?[\s]*阅读)[\s\S]*?(\d+)[\s.]*([A-D])/gi,
+                /(?:66|67|68|69|70|71|72|73|74|75|76|77|78|79|80|81|82|83|84|85)[\s.]*([A-D])/gi
+            ];
+
+            for (const pattern of readingPart3Patterns) {
+                pattern.lastIndex = 0;
+                while ((match = pattern.exec(normalizedText)) !== null) {
+                    const num = parseInt(match[1] || match[0].match(/\d+/)[0]);
+                    if (num >= 66 && num <= 85) {
+                        answerKey.reading.part3[num - 66] = match[2] || match[1];
+                    }
+                }
+            }
+
+            // Writing Part 1 (86-95): Sample answers (text)
+            const writingPart1Patterns = [
+                /(?:三[、.]?书写.*?第一部分|书写第一部分|第一部分|1\.?[\s]*书写)[\s\S]*?(\d+)[．.、]\s*([^。.]+[。.])/gi,
+                /(?:86|87|88|89|90|91|92|93|94|95)[．.、]\s*([^。.]+[。.])/gi
+            ];
+
+            for (const pattern of writingPart1Patterns) {
+                pattern.lastIndex = 0;
+                while ((match = pattern.exec(text)) !== null) {
+                    const num = parseInt(match[1] || match[0].match(/\d+/)[0]);
+                    if (num >= 86 && num <= 95) {
+                        answerKey.writing.part1[num - 86] = match[2] || match[1];
+                    }
+                }
+            }
+
+            // Writing Part 2 (96-100): Sample answers (text)
+            const writingPart2Patterns = [
+                /(?:第二[、.]部分|第二部分|书写第二部分|2\.?[\s]*书写)[\s\S]*?(\d+)[．.、]\s*([^。.]+[。.])/gi,
+                /(?:96|97|98|99|100)[．.、]\s*([^。.]+[。.])/gi
+            ];
+
+            for (const pattern of writingPart2Patterns) {
+                pattern.lastIndex = 0;
+                while ((match = pattern.exec(text)) !== null) {
+                    const num = parseInt(match[1] || match[0].match(/\d+/)[0]);
+                    if (num >= 96 && num <= 100) {
+                        answerKey.writing.part2[num - 96] = match[2] || match[1];
+                    }
+                }
+            }
+
+            // Fallback: Try to find answers in the format "1．×" or "11．B" etc.
+            const fallbackPattern = /(\d+)[．.\s]*([对错√××A-F]{1,3})/gi;
+            fallbackPattern.lastIndex = 0;
+            while ((match = fallbackPattern.exec(text)) !== null) {
                 const num = parseInt(match[1]);
-                if (num >= 66 && num <= 85) {
-                    answerKey.reading.part3[num - 66] = match[2];
+                const answer = match[2].trim();
+
+                if (num >= 1 && num <= 10) {
+                    answerKey.listening.part1[num - 1] = answer === '对' || answer === '√' ? 'true' : 'false';
+                } else if (num >= 11 && num <= 25) {
+                    answerKey.listening.part2[num - 11] = answer;
+                } else if (num >= 26 && num <= 45) {
+                    answerKey.listening.part3[num - 26] = answer;
+                } else if (num >= 46 && num <= 55) {
+                    answerKey.reading.part1[num - 46] = answer;
+                } else if (num >= 56 && num <= 65) {
+                    answerKey.reading.part2[num - 56] = answer;
+                } else if (num >= 66 && num <= 85) {
+                    answerKey.reading.part3[num - 66] = answer;
                 }
             }
 
             // Check if we got any answers
-            const hasAnswers =
+            const hasListeningAnswers =
                 answerKey.listening.part1.filter(x => x).length > 0 ||
                 answerKey.listening.part2.filter(x => x).length > 0 ||
-                answerKey.listening.part3.filter(x => x).length > 0 ||
+                answerKey.listening.part3.filter(x => x).length > 0;
+
+            const hasReadingAnswers =
                 answerKey.reading.part1.filter(x => x).length > 0 ||
                 answerKey.reading.part2.filter(x => x).length > 0 ||
                 answerKey.reading.part3.filter(x => x).length > 0;
 
-            return hasAnswers ? answerKey : null;
+            const hasWritingAnswers =
+                answerKey.writing.part1.filter(x => x).length > 0 ||
+                answerKey.writing.part2.filter(x => x).length > 0;
+
+            console.log('Parsed answer key:', {
+                listening: answerKey.listening,
+                reading: answerKey.reading,
+                writing: answerKey.writing
+            });
+
+            return (hasListeningAnswers || hasReadingAnswers || hasWritingAnswers) ? answerKey : null;
         } catch (error) {
             console.error('Parse error:', error);
             return null;
@@ -830,7 +1151,7 @@ class HSK4ExamApp {
         document.getElementById('resultsModal').classList.remove('hidden');
 
         // Show manual grading or score entry
-        if (this.answerKeyPdf) {
+        if (this.answerKeyPdf || this.wordDocumentContent) {
             this.startManualGrading();
         } else {
             this.showManualScoreEntry();
@@ -847,14 +1168,115 @@ class HSK4ExamApp {
         document.getElementById('manualScoreEntryContainer').classList.add('hidden');
         document.getElementById('resultsContent').innerHTML = '';
 
-        // Render answer key PDF with fit to page
+        // Set file type indicator
+        const fileTypeIndicator = document.getElementById('fileTypeIndicator');
+        if (this.answerKeyFileType === 'pdf') {
+            fileTypeIndicator.textContent = `📄 PDF File: ${this.wordDocumentFileName}`;
+        } else if (this.answerKeyFileType === 'word') {
+            fileTypeIndicator.textContent = `📝 Word Document: ${this.wordDocumentFileName}`;
+        }
+
+        // Render answer key based on type
         if (this.answerKeyPdf) {
+            // Show PDF viewer and hide Word document viewer
+            document.getElementById('pdfViewerContainer').style.display = 'block';
+            document.getElementById('wordDocumentViewer').style.display = 'none';
+            document.getElementById('answerKeyZoomControls').style.display = 'flex';
             await this.fitToPageAnswerKey();
+        } else if (this.wordDocumentContent) {
+            // Show Word document viewer and hide PDF viewer
+            document.getElementById('pdfViewerContainer').style.display = 'none';
+            document.getElementById('wordDocumentViewer').style.display = 'block';
+            document.getElementById('answerKeyZoomControls').style.display = 'none';
+
+            // Render Word document content
+            document.getElementById('wordDocumentContent').innerHTML = this.wordDocumentContent;
+
+            // Add styling to Word document content
+            this.styleWordDocumentContent();
         }
 
         // Generate grading interface
         this.switchGradingSection('listening');
         this.updateGradingTabs();
+    }
+
+    styleWordDocumentContent() {
+        const wordContent = document.getElementById('wordDocumentContent');
+        wordContent.style.fontFamily = "'Segoe UI', 'Microsoft YaHei', 'SimSun', sans-serif";
+        wordContent.style.lineHeight = '1.6';
+        wordContent.style.color = '#1d1d1f';
+        wordContent.style.padding = '20px';
+
+        // Format paragraphs
+        const paragraphs = wordContent.querySelectorAll('p');
+        paragraphs.forEach(p => {
+            p.style.marginBottom = '15px';
+            p.style.fontSize = '1rem';
+        });
+
+        // Format headings
+        const headings = wordContent.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        headings.forEach(h => {
+            h.style.color = '#0071e3';
+            h.style.marginTop = '20px';
+            h.style.marginBottom = '10px';
+            h.style.fontWeight = '600';
+        });
+
+        // Format bold text
+        const boldText = wordContent.querySelectorAll('strong, b');
+        boldText.forEach(b => {
+            b.style.color = '#1d1d1f';
+            b.style.fontWeight = '600';
+        });
+
+        // Format lists
+        const lists = wordContent.querySelectorAll('ul, ol');
+        lists.forEach(list => {
+            list.style.marginLeft = '20px';
+            list.style.marginBottom = '15px';
+        });
+
+        // Format list items
+        const listItems = wordContent.querySelectorAll('li');
+        listItems.forEach(li => {
+            li.style.marginBottom = '5px';
+        });
+
+        // Highlight answer sections
+        const answerKeywords = ['答案', 'answer', '一、听', '二、阅', '三、书'];
+        answerKeywords.forEach(keyword => {
+            const textNodes = this.getTextNodesContaining(wordContent, keyword);
+            textNodes.forEach(node => {
+                const span = document.createElement('span');
+                span.style.backgroundColor = '#fff9e6';
+                span.style.padding = '2px 4px';
+                span.style.borderRadius = '3px';
+                span.style.fontWeight = '600';
+                node.parentNode.replaceChild(span, node);
+                span.appendChild(node);
+            });
+        });
+    }
+
+    getTextNodesContaining(element, text) {
+        const nodes = [];
+        const walker = document.createTreeWalker(
+            element,
+            NodeFilter.SHOW_TEXT,
+            null,
+            false
+        );
+
+        let node;
+        while (node = walker.nextNode()) {
+            if (node.textContent.includes(text)) {
+                nodes.push(node);
+            }
+        }
+
+        return nodes;
     }
 
     switchGradingSection(section) {
@@ -1228,7 +1650,8 @@ class HSK4ExamApp {
             },
             hsk4Score: listeningScaled + readingScaled + writingScaled,
             totalQuestions: 100,
-            hasAnswerKey: !!this.answerKey,
+            hasAnswerKey: !!(this.answerKey || this.wordDocumentContent),
+            answerKeyType: this.answerKeyFileType,
             testName: this.currentExamName || 'Unnamed Test',
             date: new Date().toISOString(),
             isManuallyGraded: this.isManualGradingActive,
@@ -1263,6 +1686,7 @@ class HSK4ExamApp {
                 <h3>${results.hsk4Score} / 300</h3>
                 <p>HSK 4 Score: ${Math.round((results.hsk4Score / 300) * 100)}% - ${getFeedback(Math.round((results.hsk4Score / 300) * 100))}</p>
                 <p style="font-size: 1rem; color: #6e6e73; margin-top: 5px;">${results.testName}</p>
+                ${results.answerKeyType ? `<p style="font-size: 0.9rem; color: #6e6e73;">Graded using ${results.answerKeyType === 'pdf' ? 'PDF' : 'Word Document'} answer key</p>` : ''}
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 30px;">
@@ -1351,6 +1775,7 @@ class HSK4ExamApp {
             rawWriting: this.currentResults.writing.rawScore,
             totalQuestions: this.currentResults.totalQuestions,
             hasAnswerKey: this.currentResults.hasAnswerKey,
+            answerKeyType: this.currentResults.answerKeyType,
             manualScores: this.currentResults.manualScores,
             isManuallyGraded: this.currentResults.isManuallyGraded,
             answers: JSON.parse(JSON.stringify(this.userAnswers)),
@@ -1387,6 +1812,11 @@ class HSK4ExamApp {
         URL.revokeObjectURL(url);
 
         alert('Results exported successfully!');
+    }
+
+    exportAsPDF() {
+        // This function would require a PDF generation library like jsPDF
+        alert('PDF export feature requires additional setup. For now, use the Export Results button to save as JSON.');
     }
 
     // ========== HISTORY MANAGEMENT ==========
@@ -1458,9 +1888,11 @@ class HSK4ExamApp {
                             <div style="font-size: 0.8rem;">${item.rawWriting}/15</div>
                         </div>
                     </div>
-                    <div style="margin-top: 10px; display: flex; gap: 5px; justify-content: center;">
+                    <div style="margin-top: 10px; display: flex; gap: 5px; justify-content: center; flex-wrap: wrap;">
                         ${item.isManuallyGraded ? '<span style="font-size: 0.8rem; padding: 2px 8px; background: #34c759; color: white; border-radius: 4px;">Manually Graded</span>' : ''}
                         ${!item.isManuallyGraded && item.hasAnswerKey ? '<span style="font-size: 0.8rem; padding: 2px 8px; background: #0071e3; color: white; border-radius: 4px;">Auto-graded</span>' : ''}
+                        ${item.answerKeyType === 'word' ? '<span style="font-size: 0.8rem; padding: 2px 8px; background: #5856d6; color: white; border-radius: 4px;">Word Doc</span>' : ''}
+                        ${item.answerKeyType === 'pdf' ? '<span style="font-size: 0.8rem; padding: 2px 8px; background: #ff9500; color: white; border-radius: 4px;">PDF</span>' : ''}
                     </div>
                 </div>
             `;
